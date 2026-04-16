@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"maven\\\\|repo\\\\|repository\\\\|pkg\\\\.github\\\\|https://\" /Users/admin/Desktop/QRScannerApp/node_modules/@react-native-async-storage/async-storage/android/*.gradle)",
+      "Bash(find /Users/admin/Desktop/QRScannerApp/node_modules/@react-native-async-storage/async-storage/android/src -type f -exec grep -H \"maven\\\\|repo\\\\|repository\\\\|pkg\\\\|github\\\\|url\" {})",
+      "Bash(2)",
+      "Bash(grep -r \"maven.pkg.github\\\\|github\\\\.com.*maven\\\\|artifactRepository\" /Users/admin/Desktop/QRScannerApp --include=*.gradle --include=*.gradle.kts --include=*.properties --include=*.json --include=*.xml --include=*.md)",
+      "Bash(npx tsc:*)",
+      "Bash(ls:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(python3:*)"
+    ]
+  }
+}
