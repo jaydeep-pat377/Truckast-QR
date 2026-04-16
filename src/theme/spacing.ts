@@ -1,3 +1,5 @@
+import {colors} from './colors';
+
 const BASE_UNIT = 4;
 
 export const spacing = {
@@ -59,11 +61,9 @@ export const screenPadding = {
   bottom: spacing.xl,
 };
 
-import {colors} from './colors';
-
 export const shadows = {
   none: {
-    shadowColor: 'transparent',
+    shadowColor: colors.common.transparent,
     shadowOffset: {width: 0, height: 0},
     shadowOpacity: 0,
     shadowRadius: 0,

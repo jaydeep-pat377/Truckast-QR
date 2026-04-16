@@ -114,6 +114,18 @@ export const colors = {
     hintText: 'rgba(255, 255, 255, 0.3)',
     feedbackOverlay: 'rgba(0, 0, 0, 0.25)',
   },
+  tint: {
+    light: {
+      primary: 'rgba(69, 139, 0, 0.08)',
+      primaryStrong: 'rgba(69, 139, 0, 0.1)',
+      danger: '#fdecea',
+    },
+    dark: {
+      primary: 'rgba(69, 139, 0, 0.15)',
+      primaryStrong: 'rgba(69, 139, 0, 0.2)',
+      danger: 'rgba(196, 57, 38, 0.15)',
+    },
+  },
 };
 
 export type ColorTheme = 'light' | 'dark';
