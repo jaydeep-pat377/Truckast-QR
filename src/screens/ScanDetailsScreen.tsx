@@ -15,7 +15,12 @@ import {useRoute, useNavigation, RouteProp} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useAppTheme} from '../contexts/ThemeContext';
 import {deleteScanRecord} from '../storage/scanHistory';
-import {RootStackParamList} from '../types';
+import {
+  RootStackParamList,
+  TKTicketData,
+  APITicketDetails,
+  APITruckDetails,
+} from '../types';
 
 type RouteProps = RouteProp<RootStackParamList, 'ScanDetails'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -229,6 +234,14 @@ const ScanDetailsScreen: React.FC = () => {
     dataType === 'phone_plain' ||
     dataType === 'sms';
 
+  const tkData = scan.tkData;
+  const isTicket = tkData?.kind === 'ticket';
+  const isTruck = tkData?.kind === 'truck';
+  const verified = scan.verified;
+  const apiData = scan.apiData;
+  const apiTicket = isTicket ? (apiData as APITicketDetails | undefined) : undefined;
+  const apiTruck = isTruck ? (apiData as APITruckDetails | undefined) : undefined;
+
   const styles = createStyles(theme);
 
   const toastTranslateY = toastAnim.interpolate({
@@ -236,6 +249,329 @@ const ScanDetailsScreen: React.FC = () => {
     outputRange: [-8, 0],
   });
 
+  const formatIssuedAt = (iat: number) => {
+    const date = new Date(iat);
+    return date.toLocaleString('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  // ── Verification badge helper ──
+  const verificationBadge = () => {
+    if (verified === 'verified') {
+      return {label: 'Verified', color: theme.colors.success.main, bg: theme.colors.success.background};
+    }
+    if (verified === 'offline') {
+      return {label: 'Offline — Local Data', color: theme.colors.warning.main, bg: theme.colors.warning.background};
+    }
+    // Fallback for old records without verification
+    return {label: 'Unverified', color: theme.colors.textSecondary, bg: theme.colors.surface};
+  };
+
+  // ── TK QR Detail View ──
+  if (tkData) {
+    const badge = verificationBadge();
+    const ticketLocal = tkData as TKTicketData;
+
+    return (
+      <View style={styles.container}>
+        <Animated.ScrollView
+          style={{opacity: fadeAnim, transform: [{translateY: slideAnim}]}}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}>
+          {/* Hero */}
+          <View style={styles.hero}>
+            <View
+              style={[
+                styles.heroIconCircle,
+                isTicket && styles.tkTicketHero,
+                isTruck && styles.tkTruckHero,
+              ]}>
+              <Text style={styles.heroIcon}>{isTicket ? '🎫' : '🚛'}</Text>
+            </View>
+            <Text style={styles.heroLabel}>
+              {isTicket ? 'Ticket' : 'Truck'}
+            </Text>
+            <View style={[styles.verificationBadge, {backgroundColor: badge.bg}]}>
+              <Text style={[styles.verificationBadgeText, {color: badge.color}]}>
+                {badge.label}
+              </Text>
+            </View>
+          </View>
+
+          {/* Tenant info */}
+          <View style={styles.contentCard}>
+            <View
+              style={[styles.contentCardAccent, styles.tkTenantAccent]}
+            />
+            <View style={styles.contentCardInner}>
+              <Text style={styles.cardLabel}>TENANT</Text>
+              <Text style={styles.tkTenantName}>{tkData.tenantName}</Text>
+              <Text style={styles.tkTenantSub}>
+                {tkData.tenantSubdomain}
+              </Text>
+            </View>
+          </View>
+
+          {/* Ticket-specific fields — prefer API data, fall back to QR data */}
+          {isTicket && (
+            <View style={styles.card}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Ticket #</Text>
+                <Text style={styles.infoValue}>
+                  {apiTicket?.ticket_code || ticketLocal.ticketCode}
+                </Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Order #</Text>
+                <Text style={styles.infoValue}>
+                  {apiTicket?.order_code || ticketLocal.orderCode}
+                </Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Truck #</Text>
+                <Text style={styles.infoValue}>
+                  {apiTicket?.truck?.truck_code || ticketLocal.truckCode}
+                </Text>
+              </View>
+              {apiTicket?.status_display && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Status</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTicket.status_display}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {apiTicket?.load && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Load #</Text>
+                    <Text style={styles.infoValue}>{apiTicket.load}</Text>
+                  </View>
+                </>
+              )}
+              {apiTicket?.product && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Product</Text>
+                    <Text style={styles.infoValue}>{apiTicket.product}</Text>
+                  </View>
+                </>
+              )}
+              {apiTicket?.load_qty && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Load Qty</Text>
+                    <Text style={styles.infoValue}>{apiTicket.load_qty}</Text>
+                  </View>
+                </>
+              )}
+              {apiTicket?.progress_display && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Progress</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTicket.progress_display}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {apiTicket?.customer_name && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Customer</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTicket.customer_name}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {apiTicket?.delivery_address && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Destination</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTicket.delivery_address}
+                    </Text>
+                  </View>
+                </>
+              )}
+              <View style={styles.divider} />
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Issued At</Text>
+                <Text style={styles.infoValue}>
+                  {formatIssuedAt(tkData.iat)}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Truck-specific fields */}
+          {isTruck && (
+            <View style={styles.card}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Truck #</Text>
+                <Text style={styles.infoValue}>
+                  {apiTruck?.code || tkData.truckCode}
+                </Text>
+              </View>
+              {apiTruck?.description && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Description</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTruck.description}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {apiTruck?.current_driver_name && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Driver</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTruck.current_driver_name}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {apiTruck?.ticket_status && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Status</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTruck.ticket_status}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {apiTruck?.order_code && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Current Order</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTruck.order_code}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {apiTruck?.customer_name && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Customer</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTruck.customer_name}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {apiTruck?.delivery_address && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Delivery</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTruck.delivery_address}
+                    </Text>
+                  </View>
+                </>
+              )}
+              {apiTruck?.plant_name && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Plant</Text>
+                    <Text style={styles.infoValue}>
+                      {apiTruck.plant_name}
+                    </Text>
+                  </View>
+                </>
+              )}
+              <View style={styles.divider} />
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Issued At</Text>
+                <Text style={styles.infoValue}>
+                  {formatIssuedAt(tkData.iat)}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Scan meta */}
+          <View style={styles.card}>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Scanned At</Text>
+              <Text style={styles.infoValue}>
+                {formatTimestamp(scan.timestamp)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Actions */}
+          <View style={styles.actionsContainer}>
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.secondaryAction,
+                  styles.flex1,
+                ]}
+                onPress={handleShare}
+                activeOpacity={0.8}>
+                <Text style={styles.actionIcon}>📤</Text>
+                <Text style={styles.secondaryActionText}>Share</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.actionButton, styles.dangerAction]}
+              onPress={handleDelete}
+              activeOpacity={0.8}>
+              <Text style={styles.actionIcon}>🗑️</Text>
+              <Text style={styles.dangerActionText}>Delete Scan</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.ScrollView>
+
+        {toastVisible && (
+          <Animated.View
+            style={[
+              styles.toast,
+              {
+                opacity: toastAnim,
+                transform: [{translateY: toastTranslateY}],
+              },
+            ]}
+            pointerEvents="none">
+            <Text style={styles.toastText}>✓ {toastMessage}</Text>
+          </Animated.View>
+        )}
+      </View>
+    );
+  }
+
+  // ── Generic QR Detail View (non-TK) ──
   return (
     <View style={styles.container}>
       <Animated.ScrollView
@@ -536,6 +872,38 @@ const createStyles = (theme: ThemeType) =>
     dangerActionText: {
       ...theme.typography.button,
       color: theme.colors.error.main,
+    },
+
+    // Verification badge
+    verificationBadge: {
+      borderRadius: theme.borderRadius.full,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.xxs + 1,
+    },
+    verificationBadgeText: {
+      ...theme.typography.caption,
+      fontWeight: theme.fontWeight.semiBold,
+    },
+
+    // TK QR specific
+    tkTicketHero: {
+      backgroundColor: theme.colors.primaryTint,
+    },
+    tkTruckHero: {
+      backgroundColor: theme.colors.info.background,
+    },
+    tkTenantAccent: {
+      backgroundColor: theme.colors.success.main,
+    },
+    tkTenantName: {
+      ...theme.typography.h3,
+      color: theme.colors.text,
+      marginTop: theme.spacing.xxs,
+    },
+    tkTenantSub: {
+      ...theme.typography.bodySmall,
+      color: theme.colors.textSecondary,
+      marginTop: theme.spacing.xxs,
     },
 
     // Toast

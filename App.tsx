@@ -4,6 +4,7 @@ import {NavigationContainer} from '@react-navigation/native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ThemeProvider, useTheme} from './src/contexts/ThemeContext';
+import {AuthProvider} from './src/contexts/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import SplashScreen from './src/screens/SplashScreen';
 import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
@@ -92,7 +93,9 @@ const App: React.FC = () => {
   return (
     <SafeAreaProvider>
       <ThemeProvider initialMode="system">
-        <AppContent />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

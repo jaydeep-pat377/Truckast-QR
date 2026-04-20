@@ -23,8 +23,11 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useAppTheme} from '../contexts/ThemeContext';
+import {useAuth} from '../contexts/AuthContext';
 import {saveScanRecord, getScanHistory} from '../storage/scanHistory';
 import {RootStackParamList, ScanRecord} from '../types';
+import {isTKQR, isTKPipeQR} from '../utils/qrDecryption';
+import {verifyQRPayload} from '../services/ticketService';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const brandLogo = require('../assets/logo.png');
@@ -41,6 +44,7 @@ const CORNER_RADIUS = 14;
 
 const QRScannerScreen: React.FC = () => {
   const theme = useAppTheme();
+  const {getAccessToken, backendUrl} = useAuth();
   const insets = useSafeAreaInsets();
   const {width: screenWidth} = useWindowDimensions();
   const navigation = useNavigation<NavigationProp>();
@@ -51,6 +55,9 @@ const QRScannerScreen: React.FC = () => {
   const [feedbackState, setFeedbackState] = useState<FeedbackState>('idle');
   const [historyCount, setHistoryCount] = useState(0);
   const isProcessing = useRef(false);
+  const scanCooldownRef = useRef(false);
+  const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const SCAN_AREA_SIZE = Math.min(screenWidth * 0.65, 260);
 
@@ -66,9 +73,27 @@ const QRScannerScreen: React.FC = () => {
   // Load history count + reset scanner on focus
   useFocusEffect(
     useCallback(() => {
+      // Clear any pending timers from previous scan
+      if (navTimeoutRef.current) {
+        clearTimeout(navTimeoutRef.current);
+        navTimeoutRef.current = null;
+      }
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current);
+        cooldownTimerRef.current = null;
+      }
+
+      // Camera ON — never toggle isActive during scanning,
+      // only on screen focus/blur to avoid vision-camera restart bugs
       setIsActive(true);
-      isProcessing.current = false;
-      setFeedbackState('idle');
+
+      // Brief cooldown on return to prevent instant re-scan
+      scanCooldownRef.current = true;
+      const cooldown = setTimeout(() => {
+        scanCooldownRef.current = false;
+        isProcessing.current = false;
+        setFeedbackState('idle');
+      }, 800);
 
       const loadCount = async () => {
         const data = await getScanHistory();
@@ -77,7 +102,8 @@ const QRScannerScreen: React.FC = () => {
       loadCount();
 
       return () => {
-        setIsActive(false);
+        clearTimeout(cooldown);
+        setIsActive(false); // Camera OFF only when leaving screen
       };
     }, []),
   );
@@ -151,57 +177,148 @@ const QRScannerScreen: React.FC = () => {
     return () => animation.stop();
   }, [scanLineGlowAnim]);
 
-  const showSuccessFeedback = useCallback(() => {
-    setFeedbackState('success');
-    feedbackScaleAnim.setValue(0.3);
-    feedbackOpacityAnim.setValue(0);
-    Animated.parallel([
-      Animated.spring(feedbackScaleAnim, {
-        toValue: 1,
-        friction: 5,
-        tension: 80,
-        useNativeDriver: true,
-      }),
-      Animated.timing(feedbackOpacityAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [feedbackScaleAnim, feedbackOpacityAnim]);
+  const showFeedback = useCallback(
+    (state: 'success' | 'error') => {
+      setFeedbackState(state);
+      feedbackScaleAnim.setValue(0.3);
+      feedbackOpacityAnim.setValue(0);
+      Animated.parallel([
+        Animated.spring(feedbackScaleAnim, {
+          toValue: 1,
+          friction: 5,
+          tension: 80,
+          useNativeDriver: true,
+        }),
+        Animated.timing(feedbackOpacityAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    },
+    [feedbackScaleAnim, feedbackOpacityAnim],
+  );
+
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const resetScanner = useCallback((delay = 2000) => {
+    cooldownTimerRef.current = setTimeout(() => {
+      cooldownTimerRef.current = null;
+      setFeedbackState('idle');
+      setErrorMessage('');
+      isProcessing.current = false;
+      scanCooldownRef.current = false;
+    }, delay);
+  }, []);
 
   const processScanResult = useCallback(
     async (data: string, type: string) => {
-      Vibration.vibrate(Platform.OS === 'ios' ? 10 : 50);
-      showSuccessFeedback();
+      try {
+        const scanRecord: ScanRecord = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          data,
+          type,
+          timestamp: Date.now(),
+        };
 
-      const scanRecord: ScanRecord = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        data,
-        type,
-        timestamp: Date.now(),
-      };
+        // ── Check QR type ──
+        const isTK = isTKQR(data);
+        const isPipe = isTKPipeQR(data);
+        console.log('[SCAN] isTKQR:', isTK, '| isTKPipeQR:', isPipe, '| data preview:', data.substring(0, 50));
 
-      await saveScanRecord(scanRecord);
-      setHistoryCount(prev => prev + 1);
+        // ── TK QR: send to server for decryption + verification ──
+        if (isTK || isPipe) {
+          setFeedbackState('processing');
 
-      setTimeout(() => {
-        navigation.navigate('ScanDetails', {scan: scanRecord});
-      }, 650);
+          const token = await getAccessToken();
+          console.log('[SCAN] Token available:', !!token, '| backendUrl:', backendUrl);
+
+          const result = await verifyQRPayload(data, token, backendUrl);
+          console.log('[SCAN] Server result:', result.status, '| message:', result.message, '| hasQrData:', !!result.qrData, '| hasApiData:', !!result.apiData);
+
+          if (result.status === 'not_found') {
+            showFeedback('error');
+            setErrorMessage(result.message || 'Ticket not found');
+            resetScanner();
+            return;
+          }
+
+          if (result.status === 'error') {
+            showFeedback('error');
+            setErrorMessage(result.message || 'Verification failed');
+            resetScanner();
+            return;
+          }
+
+          if (result.status === 'offline') {
+            showFeedback('error');
+            setErrorMessage(result.message || 'Network error');
+            resetScanner();
+            return;
+          }
+
+          // Verified — store data and navigate
+          scanRecord.verified = result.status;
+          if (result.qrData) {
+            scanRecord.tkData = result.qrData;
+          }
+          if (result.apiData) {
+            scanRecord.apiData = result.apiData;
+          }
+
+          showFeedback('success');
+          await saveScanRecord(scanRecord);
+          setHistoryCount(prev => prev + 1);
+
+          scanCooldownRef.current = true;
+          navTimeoutRef.current = setTimeout(() => {
+            navTimeoutRef.current = null;
+            navigation.navigate('ScanDetails', {scan: scanRecord});
+          }, 650);
+          return;
+        }
+
+        // ── Non-TK QR: pass through directly ──
+        showFeedback('success');
+        await saveScanRecord(scanRecord);
+        setHistoryCount(prev => prev + 1);
+
+        scanCooldownRef.current = true;
+
+        navTimeoutRef.current = setTimeout(() => {
+          navTimeoutRef.current = null;
+          navigation.navigate('ScanDetails', {scan: scanRecord});
+        }, 650);
+      } catch (err) {
+        // Catch-all: ensure scanner always recovers from unexpected errors
+        console.error('[SCAN] Unexpected error:', err);
+        showFeedback('error');
+        setErrorMessage('Something went wrong. Try again.');
+        resetScanner();
+      }
     },
-    [navigation, showSuccessFeedback],
+    [navigation, showFeedback, resetScanner, getAccessToken, backendUrl],
   );
 
   const codeScanner = useCodeScanner({
-    codeTypes: ['qr', 'ean-13', 'ean-8', 'code-128', 'code-39', 'code-93'],
-    onCodeScanned: codes => {
-      if (isProcessing.current || codes.length === 0) {
+    codeTypes: ['qr'],
+    onCodeScanned: (codes) => {
+      console.log('[SCANNER] onCodeScanned! count:', codes.length);
+
+      if (isProcessing.current || scanCooldownRef.current || codes.length === 0) {
         return;
       }
+
+      const value = codes[0].value || '';
+      console.log('[SCANNER] value:', value.substring(0, 60));
+
+      if (!value) {
+        return;
+      }
+
       isProcessing.current = true;
-      setIsActive(false);
-      const code = codes[0];
-      processScanResult(code.value || '', code.type || 'unknown');
+      Vibration.vibrate(Platform.OS === 'ios' ? 10 : 50);
+      processScanResult(value, codes[0].type || 'qr');
     },
   });
 
@@ -303,6 +420,7 @@ const QRScannerScreen: React.FC = () => {
         isActive={isActive}
         codeScanner={codeScanner}
         torch={flashOn ? 'on' : 'off'}
+        photo={true}
       />
 
       {/* ── Full-screen overlay ── */}
@@ -384,6 +502,16 @@ const QRScannerScreen: React.FC = () => {
               </Animated.View>
             )}
 
+            {feedbackState === 'processing' && (
+              <View style={styles.feedbackCenter}>
+                <ActivityIndicator
+                  size="large"
+                  color={theme.colors.common.white}
+                />
+                <Text style={styles.feedbackLabel}>Verifying...</Text>
+              </View>
+            )}
+
             {feedbackState === 'success' && (
               <Animated.View
                 style={[
@@ -412,7 +540,9 @@ const QRScannerScreen: React.FC = () => {
                 <View style={styles.errorCircle}>
                   <Text style={styles.feedbackSymbol}>✕</Text>
                 </View>
-                <Text style={styles.feedbackLabel}>Try again</Text>
+                <Text style={styles.feedbackLabel}>
+                  {errorMessage || 'Try again'}
+                </Text>
               </Animated.View>
             )}
           </View>
