@@ -10,16 +10,16 @@
  */
 import QuickCrypto from 'react-native-quick-crypto';
 import {toByteArray} from 'react-native-quick-base64';
+import {ENV} from '../config/env';
 import type {TKQRData, TKTicketData} from '../types';
 
 const TK_PREFIX = '[TK/E]';
 
-const KEY_HEX =
-  'd43e6d3bece53add33e7faaa051c0c9234ae504bb3f33b59556d8103b7c5fc7b';
+const KEY_HEX = ENV.QR_ENCRYPTION_KEY;
 
-const KEY_BYTES = new Uint8Array(
-  KEY_HEX.match(/.{2}/g)!.map(h => parseInt(h, 16)),
-);
+const KEY_BYTES = KEY_HEX
+  ? new Uint8Array(KEY_HEX.match(/.{2}/g)!.map(h => parseInt(h, 16)))
+  : new Uint8Array(32);
 
 export function isTKQR(payload: string): boolean {
   return payload.startsWith(TK_PREFIX);
@@ -127,7 +127,7 @@ export async function decryptTKQR(payload: string): Promise<TKQRData> {
     console.log('[DECRYPT] JSON preview:', jsonStr.substring(0, 80));
     return JSON.parse(jsonStr) as TKQRData;
   } catch (e) {
-    console.error('[DECRYPT] Failed:', e);
+    console.log('[DECRYPT] Failed:', e);
     throw new Error(
       'Decryption failed: ' + (e instanceof Error ? e.message : String(e)),
     );

@@ -9,8 +9,6 @@ import type {
   VerificationStatus,
 } from '../types';
 
-// ── Server-side QR verify response (new endpoint) ──
-
 interface QrVerifyResponse {
   success: boolean;
   data?: {
@@ -39,8 +37,6 @@ interface QrVerifyResponse {
   message?: string;
 }
 
-// ── Existing ticket by-order response (already deployed) ──
-
 interface TicketByOrderResponse {
   success: boolean;
   data: {
@@ -62,21 +58,6 @@ interface TicketByOrderResponse {
   };
 }
 
-interface TruckListResponse {
-  success: boolean;
-  data: APITruckDetails[];
-  total: number;
-}
-
-/**
- * Verify a scanned QR code.
- *
- * Strategy:
- *   1. Try POST /api/qr/verify (server-side decrypt + lookup — if deployed)
- *   2. If that fails with 404, fall back to existing endpoints:
- *      - For pipe-format: parse locally → GET /api/tickets/by-order/:orderId
- *      - For encrypted: can't decrypt locally, show error
- */
 export async function verifyQRPayload(
   rawPayload: string,
   authToken?: string | null,
@@ -88,12 +69,16 @@ export async function verifyQRPayload(
   message?: string;
 }> {
   if (!authToken) {
+    console.log('[VERIFY] ❌ No auth token');
     return {status: 'offline', message: 'Not authenticated'};
   }
 
-  // ── Try new endpoint first ──
+  // Step 1: Try POST /api/qr/verify
   try {
-    console.log('[VERIFY] Trying POST /api/qr/verify ...');
+    console.log('[VERIFY] ── POST /api/qr/verify ──');
+    console.log('[VERIFY]    URL:', (backendUrl || 'default') + '/api/qr/verify');
+    console.log('[VERIFY]    Payload preview:', rawPayload.substring(0, 60));
+
     const response = await apiRequest<QrVerifyResponse>('/api/qr/verify', {
       method: 'POST',
       body: {payload: rawPayload},
@@ -101,12 +86,37 @@ export async function verifyQRPayload(
       baseUrl: backendUrl,
     });
 
-    console.log('[VERIFY] Server response:', response.success);
+    console.log('[VERIFY] ── Response ──');
+    console.log('[VERIFY]    success:', response.success);
+    console.log('[VERIFY]    message:', response.message);
+    console.log('[VERIFY]    error_code:', response.error_code);
+    console.log('[VERIFY]    has data:', !!response.data);
 
     if (response.success && response.data) {
       const {kind, qrData, details} = response.data;
 
+      console.log('[VERIFY]    kind:', kind);
+      console.log('[VERIFY]    has qrData:', !!qrData);
+      console.log('[VERIFY]    has details.ticket:', !!details?.ticket);
+      console.log('[VERIFY]    has details.truck:', !!details?.truck);
+      console.log('[VERIFY]    has details.order:', !!details?.order);
+      console.log('[VERIFY]    has details.summary:', !!details?.summary);
+
       if (kind === 'ticket' && details.ticket) {
+        console.log('[VERIFY] ── Ticket Details from API ──');
+        console.log('[VERIFY]    ticket_code:', details.ticket.ticket_code);
+        console.log('[VERIFY]    truck_code:', details.ticket.truck?.truck_code);
+        console.log('[VERIFY]    truck_desc:', details.ticket.truck?.truck_description);
+        console.log('[VERIFY]    status:', details.ticket.status_display);
+        console.log('[VERIFY]    product:', details.ticket.product);
+        console.log('[VERIFY]    load_qty:', details.ticket.load_qty);
+        console.log('[VERIFY]    driver:', details.ticket.driver_name);
+        console.log('[VERIFY]    plant:', details.ticket.plant_name);
+        console.log('[VERIFY]    customer:', details.order?.customer_name);
+        console.log('[VERIFY]    delivery:', details.order?.delivery_address);
+        console.log('[VERIFY]    timestamps:', JSON.stringify(details.ticket.timestamps));
+        console.log('[VERIFY]    progress:', details.summary?.progress_display);
+
         const enrichedTicket: APITicketDetails = {
           ...details.ticket,
           order_code: details.order?.order_code,
@@ -116,58 +126,51 @@ export async function verifyQRPayload(
           delivery_address: details.order?.delivery_address,
           progress_display: details.summary?.progress_display,
         };
+        console.log('[VERIFY] ✅ Returning enriched ticket with apiData');
         return {status: 'verified', qrData, apiData: enrichedTicket};
       }
 
       if (kind === 'truck' && details.truck) {
+        console.log('[VERIFY] ✅ Truck verified via /api/qr/verify');
+        console.log('[VERIFY]    truck:', JSON.stringify(details.truck).substring(0, 200));
         return {status: 'verified', qrData, apiData: details.truck};
       }
     }
 
-    return {
-      status: 'not_found',
-      message: response.message || 'QR verification failed',
-    };
+    console.log('[VERIFY] ❌ No usable data in response');
+    return {status: 'not_found', message: response.message || 'QR verification failed'};
   } catch (err) {
-    // If new endpoint doesn't exist (404) or server error, try fallback
     const is404 = err instanceof ApiError && err.status === 404;
     const isServerError = err instanceof ApiError && err.status >= 500;
     const isNetwork = err instanceof NetworkError;
+
+    console.log('[VERIFY] ── Error ──');
+    console.log('[VERIFY]    type:', err instanceof ApiError ? 'ApiError' : err instanceof NetworkError ? 'NetworkError' : 'Unknown');
+    console.log('[VERIFY]    status:', err instanceof ApiError ? err.status : 'N/A');
+    console.log('[VERIFY]    message:', err instanceof Error ? err.message.substring(0, 200) : err);
 
     if (isNetwork) {
       return {status: 'offline', message: 'No network connection'};
     }
 
-    console.log(
-      '[VERIFY] /api/qr/verify failed:',
-      err instanceof Error ? err.message : err,
-      '— trying fallback...',
-    );
-
-    // ── Fallback: use existing endpoints ──
-    // This works when the new QR endpoint isn't deployed yet
-    if (is404 || isServerError) {
-      return fallbackVerify(rawPayload, authToken, backendUrl);
-    }
-
-    // Auth errors
     if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
       return {status: 'offline', message: 'Session expired'};
     }
 
-    // 400 = bad payload (not a fallback-able error)
     if (err instanceof ApiError && err.status === 400) {
       return {status: 'error', message: 'Invalid QR code format'};
+    }
+
+    // Step 2: Fallback
+    if (is404 || isServerError) {
+      console.log('[VERIFY] ⚠️ Server error/404, trying client-side fallback...');
+      return fallbackVerify(rawPayload, authToken, backendUrl);
     }
 
     return {status: 'error', message: 'Verification failed'};
   }
 }
 
-/**
- * Fallback: parse pipe-format locally, then use existing ticket/truck endpoints.
- * For encrypted QR, we can't decrypt without the server endpoint.
- */
 async function fallbackVerify(
   rawPayload: string,
   authToken: string,
@@ -178,7 +181,7 @@ async function fallbackVerify(
   apiData?: APIDetails;
   message?: string;
 }> {
-  // Check if it's pipe format (we can parse locally)
+  // Pipe format
   if (rawPayload.includes('|') && !rawPayload.startsWith('[')) {
     const parts = rawPayload.split('|');
     if (parts.length === 6) {
@@ -198,106 +201,102 @@ async function fallbackVerify(
         sig: '',
         iat: Date.now(),
       };
-
-      console.log('[VERIFY] Fallback: pipe format, orderId:', qrData.orderId, 'ticketCode:', qrData.ticketCode);
-
-      // Use existing GET /api/tickets/by-order/:orderId
-      try {
-        const orderId = parseInt(qrData.orderId, 10);
-        if (isNaN(orderId)) {
-          return {status: 'error', qrData, message: 'Invalid order ID'};
-        }
-
-        const response = await apiRequest<TicketByOrderResponse>(
-          `/api/tickets/by-order/${orderId}`,
-          {authToken, baseUrl: backendUrl},
-        );
-
-        if (response.success && response.data) {
-          const ticket = response.data.tickets.find(
-            (t: APITicketDetails) => t.ticket_code === qrData.ticketCode,
-          );
-
-          if (ticket) {
-            const enrichedTicket: APITicketDetails = {
-              ...ticket,
-              order_code: response.data.order.order_code,
-              order_date: response.data.order.order_date ?? undefined,
-              customer_name: response.data.order.customer_name,
-              project_name: response.data.order.project_name,
-              delivery_address: response.data.order.delivery_address,
-              progress_display: response.data.summary.progress_display,
-            };
-            return {status: 'verified', qrData, apiData: enrichedTicket};
-          }
-
-          return {status: 'not_found', qrData, message: 'Ticket not found in order'};
-        }
-
-        return {status: 'not_found', qrData, message: 'Order not found'};
-      } catch (e) {
-        console.error('[VERIFY] Fallback API error:', e);
-        return {status: 'offline', qrData, message: 'Could not fetch ticket details'};
-      }
+      return fetchTicketByOrder(qrData, authToken, backendUrl);
     }
   }
 
-  // Encrypted format — decrypt locally and use existing ticket endpoint
+  // Encrypted format
   if (rawPayload.startsWith('[TK/E]')) {
-    console.log('[VERIFY] Fallback: client-side decrypt for encrypted QR...');
     try {
       const qrData = await decryptTKQR(rawPayload);
-      console.log('[VERIFY] Client decrypt OK:', qrData.kind, 'orderId:', qrData.kind === 'ticket' ? (qrData as TKTicketData).orderId : 'N/A');
+      console.log('[VERIFY] ✅ Client decrypt OK');
 
       if (qrData.kind === 'ticket') {
-        const ticketData = qrData as TKTicketData;
-        const orderId = parseInt(ticketData.orderId, 10);
-        if (isNaN(orderId)) {
-          return {status: 'verified', qrData, message: 'Decrypted (offline)'};
-        }
-
-        try {
-          const response = await apiRequest<TicketByOrderResponse>(
-            `/api/tickets/by-order/${orderId}`,
-            {authToken, baseUrl: backendUrl},
-          );
-
-          if (response.success && response.data) {
-            const ticket = response.data.tickets.find(
-              (t: APITicketDetails) => t.ticket_code === ticketData.ticketCode,
-            );
-
-            if (ticket) {
-              const enrichedTicket: APITicketDetails = {
-                ...ticket,
-                order_code: response.data.order.order_code,
-                order_date: response.data.order.order_date ?? undefined,
-                customer_name: response.data.order.customer_name,
-                project_name: response.data.order.project_name,
-                delivery_address: response.data.order.delivery_address,
-                progress_display: response.data.summary.progress_display,
-              };
-              return {status: 'verified', qrData, apiData: enrichedTicket};
-            }
-            return {status: 'not_found', qrData, message: 'Ticket not found in order'};
-          }
-          return {status: 'not_found', qrData, message: 'Order not found'};
-        } catch {
-          // API failed but we still have decrypted QR data
-          return {status: 'verified', qrData, message: 'Decrypted (offline)'};
-        }
+        return fetchTicketByOrder(qrData as TKTicketData, authToken, backendUrl);
       }
-
-      // Truck or other kind — return decrypted data
       return {status: 'verified', qrData};
-    } catch (decryptErr) {
-      console.error('[VERIFY] Client decrypt failed:', decryptErr);
-      return {
-        status: 'error',
-        message: 'Could not decrypt QR code',
-      };
+    } catch (e) {
+      console.log('[VERIFY] ❌ Client decrypt failed:', e instanceof Error ? e.message : e);
+      return {status: 'error', message: 'Could not decrypt QR code'};
     }
   }
 
+  console.log('[VERIFY] ❌ Unrecognized format');
   return {status: 'error', message: 'Unrecognized QR format'};
+}
+
+async function fetchTicketByOrder(
+  qrData: TKTicketData,
+  authToken: string,
+  backendUrl?: string,
+): Promise<{
+  status: VerificationStatus;
+  qrData: TKQRData;
+  apiData?: APIDetails;
+  message?: string;
+}> {
+  const orderId = parseInt(qrData.orderId, 10);
+
+  // If orderId is valid, use by-order endpoint
+  if (!isNaN(orderId) && orderId > 0) {
+    try {
+      const response = await apiRequest<TicketByOrderResponse>(
+        `/api/tickets/by-order/${orderId}`,
+        {authToken, baseUrl: backendUrl},
+      );
+
+      if (response.success && response.data) {
+        const ticket = response.data.tickets.find(
+          (t: APITicketDetails) => t.ticket_code === qrData.ticketCode,
+        );
+
+        if (ticket) {
+          console.log('[VERIFY] ✅ Ticket found via by-order:', ticket.ticket_code);
+          const enrichedTicket: APITicketDetails = {
+            ...ticket,
+            order_code: response.data.order.order_code,
+            order_date: response.data.order.order_date ?? undefined,
+            customer_name: response.data.order.customer_name,
+            project_name: response.data.order.project_name,
+            delivery_address: response.data.order.delivery_address,
+            progress_display: response.data.summary.progress_display,
+          };
+          return {status: 'verified', qrData, apiData: enrichedTicket};
+        }
+      }
+    } catch (e) {
+      console.log('[VERIFY] ❌ by-order failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Fallback: search by ticket code using GET /api/tickets?search=<ticketCode>
+  if (qrData.ticketCode) {
+    try {
+      console.log('[VERIFY] Trying GET /api/tickets?search=' + qrData.ticketCode);
+      const response = await apiRequest<{
+        success: boolean;
+        data: {tickets: APITicketDetails[]; pagination: unknown};
+      }>(
+        '/api/tickets',
+        {
+          authToken,
+          baseUrl: backendUrl,
+          params: {search: qrData.ticketCode, limit: '1'},
+        },
+      );
+
+      if (response.success && response.data?.tickets?.length > 0) {
+        const ticket = response.data.tickets[0];
+        console.log('[VERIFY] ✅ Ticket found via search:', ticket.ticket_code);
+        return {status: 'verified', qrData, apiData: ticket};
+      }
+
+      console.log('[VERIFY] ❌ Ticket not found via search');
+    } catch (e) {
+      console.log('[VERIFY] ❌ Search failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Still return QR data even if API lookup failed
+  return {status: 'verified', qrData, message: 'Decrypted (ticket details unavailable)'};
 }

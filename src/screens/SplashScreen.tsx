@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   StatusBar,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/Ionicons';
 import {Theme} from '../theme';
 
 const LOGO_SIZE = 120;
@@ -252,7 +253,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({
 
         {/* Verification badge */}
         <View style={[styles.verifyBadge, {backgroundColor: primary}]}>
-          <Text style={styles.verifyIcon}>✓</Text>
+          <Icon name="checkmark" size={15} color={theme.colors.common.white} />
         </View>
       </Animated.View>
 
@@ -288,7 +289,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({
           styles.authBadge,
           {opacity: authBadgeOpacity, borderColor: `${primary}25`},
         ]}>
-        <Text style={styles.authIcon}>🔒</Text>
+        <Icon name="lock-closed" size={11} color={`${primary}CC`} />
         <Text style={[styles.authText, {color: `${primary}CC`}]}>
           AUTHORIZED USE ONLY
         </Text>

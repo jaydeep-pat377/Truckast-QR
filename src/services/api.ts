@@ -1,5 +1,8 @@
-// Default base URL — overridden per-tenant via backendUrl from auth context.
-const DEFAULT_API_BASE_URL = 'https://api.truckast.ai';
+import {ENV} from '../config/env';
+import {checkNetwork} from '../utils/network';
+
+// Base URL from .env file — overridden per-tenant via backendUrl from auth context.
+const DEFAULT_API_BASE_URL = ENV.API_BASE_URL;
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -22,7 +25,7 @@ export class NetworkError extends Error {
 export async function apiRequest<T>(
   path: string,
   options: {
-    method?: 'GET' | 'POST';
+    method?: 'GET' | 'POST' | 'DELETE';
     body?: Record<string, unknown>;
     authToken?: string;
     params?: Record<string, string>;
@@ -31,7 +34,11 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const {method = 'GET', body, authToken, params, baseUrl} = options;
 
-  // Build URL with query params — use tenant-specific baseUrl if provided
+  const isOnline = await checkNetwork();
+  if (!isOnline) {
+    throw new NetworkError('No internet connection');
+  }
+
   const base = baseUrl || DEFAULT_API_BASE_URL;
   let url = `${base}${path}`;
   if (params) {
@@ -40,6 +47,19 @@ export async function apiRequest<T>(
       url += `?${qs}`;
     }
   }
+
+  // Log request details
+  console.log(`[API] ➡️ ${method} ${path}`);
+  console.log(`[API]    Base URL: ${base}`);
+  console.log(`[API]    Full URL: ${url}`);
+  if (params) {
+    console.log(`[API]    Params:`, JSON.stringify(params));
+  }
+  if (body) {
+    const bodyPreview = JSON.stringify(body).substring(0, 300);
+    console.log(`[API]    Body: ${bodyPreview}`);
+  }
+  console.log(`[API]    Auth: ${authToken ? 'Bearer ***' + authToken.slice(-6) : 'none'}`);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -54,6 +74,7 @@ export async function apiRequest<T>(
   }
 
   try {
+    const startTime = Date.now();
     const response = await fetch(url, {
       method,
       headers,
@@ -61,20 +82,26 @@ export async function apiRequest<T>(
       signal: controller.signal,
     });
 
+    const elapsed = Date.now() - startTime;
+
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      throw new ApiError(
-        text || `HTTP ${response.status}`,
-        response.status,
-      );
+      console.log(`[API] ❌ ${method} ${path} → ${response.status} (${elapsed}ms)`);
+      console.log(`[API]    Error Response: ${text.substring(0, 300)}`);
+      throw new ApiError(text || `HTTP ${response.status}`, response.status);
     }
 
-    return (await response.json()) as T;
+    const data = (await response.json()) as T;
+    const responsePreview = JSON.stringify(data).substring(0, 300);
+    console.log(`[API] ✅ ${method} ${path} → ${response.status} (${elapsed}ms)`);
+    console.log(`[API]    Response: ${responsePreview}`);
+    return data;
   } catch (err) {
     if (err instanceof ApiError) {
       throw err;
     }
-    // AbortError (timeout) or network failure
+    console.log(`[API] ❌ ${method} ${path} → Network Error`);
+    console.log(`[API]    Error: ${err instanceof Error ? err.message : err}`);
     throw new NetworkError(
       err instanceof Error ? err.message : 'Network request failed',
     );

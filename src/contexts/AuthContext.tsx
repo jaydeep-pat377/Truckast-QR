@@ -17,6 +17,7 @@ import {
   loadTokens,
   clearTokens,
 } from '../services/authService';
+import {ENV} from '../config/env';
 import type {AuthTokens, User} from '../types';
 
 interface AuthState {
@@ -55,7 +56,9 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({
   );
 
   const backendUrl = useMemo(
-    () => state.user?.metadata?.tenant?.tenant_backend_url || 'https://api.truckast.ai',
+    () => ENV.IS_LOCAL
+      ? ENV.API_BASE_URL  // Local dev — always use .env URL
+      : state.user?.metadata?.tenant?.tenant_backend_url || ENV.API_BASE_URL,
     [state.user],
   );
 

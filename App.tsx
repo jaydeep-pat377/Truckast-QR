@@ -2,9 +2,11 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {Animated, StatusBar, StyleSheet} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ThemeProvider, useTheme} from './src/contexts/ThemeContext';
 import {AuthProvider} from './src/contexts/AuthContext';
+import {AlertProvider} from './src/contexts/AlertContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import SplashScreen from './src/screens/SplashScreen';
 import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
@@ -91,13 +93,17 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <SafeAreaProvider>
-      <ThemeProvider initialMode="system">
-        <AuthProvider>
-          <AppContent />
-        </AuthProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{flex: 1}}>
+      <SafeAreaProvider>
+        <ThemeProvider initialMode="system">
+          <AlertProvider>
+            <AuthProvider>
+              <AppContent />
+            </AuthProvider>
+          </AlertProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 };
 

@@ -51,9 +51,23 @@ const AppNavigator: React.FC = () => {
           <Stack.Screen
             name="ScanDetails"
             component={ScanDetailsScreen}
-            options={{
-              title: 'Scan Details',
-              headerBackTitle: 'Back',
+            options={({route}) => {
+              const scan = route.params?.scan;
+              const tkData = scan?.tkData;
+              const apiData = scan?.apiData as any;
+              let title = 'Scan Details';
+              if (tkData?.kind === 'ticket') {
+                const code = apiData?.ticket_code || tkData?.ticketCode;
+                if (code) {
+                  title = `Ticket ${code}`;
+                }
+              } else if (tkData?.kind === 'truck') {
+                const code = apiData?.code || tkData?.truckCode;
+                if (code) {
+                  title = `Truck ${code}`;
+                }
+              }
+              return {title, headerBackTitle: 'Back'};
             }}
           />
           <Stack.Screen

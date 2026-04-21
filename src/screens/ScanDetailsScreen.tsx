@@ -6,15 +6,22 @@ import {
   TouchableOpacity,
   ScrollView,
   Linking,
-  Alert,
   Share,
   Animated,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
+import ReactNativeBlobUtil from 'react-native-blob-util';
 import {useRoute, useNavigation, RouteProp} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import Icon from 'react-native-vector-icons/Ionicons';
+import MCIcon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useAppTheme} from '../contexts/ThemeContext';
+import {useAuth} from '../contexts/AuthContext';
+import {useAlert} from '../contexts/AlertContext';
 import {deleteScanRecord} from '../storage/scanHistory';
+import {generateTicketPdf} from '../utils/ticketPdf';
 import {
   RootStackParamList,
   TKTicketData,
@@ -28,11 +35,14 @@ type ThemeType = ReturnType<typeof import('../contexts/ThemeContext').useAppThem
 
 const ScanDetailsScreen: React.FC = () => {
   const theme = useAppTheme();
+  const {backendUrl, getAccessToken} = useAuth();
+  const {showAlert} = useAlert();
   const route = useRoute<RouteProps>();
   const navigation = useNavigation<NavigationProp>();
   const {scan} = route.params;
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   // Entry animation
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -103,20 +113,20 @@ const ScanDetailsScreen: React.FC = () => {
     return labels[dataType] || 'Data';
   }, [dataType]);
 
-  const dataTypeIcon = useMemo(() => {
+  const dataTypeIconName = useMemo(() => {
     const icons: Record<string, string> = {
-      url: '🌐',
-      email: '📧',
-      email_plain: '📧',
-      phone: '📞',
-      phone_plain: '📞',
-      sms: '💬',
-      wifi: '📶',
-      contact: '👤',
-      event: '📅',
-      text: '📝',
+      url: 'globe-outline',
+      email: 'mail-outline',
+      email_plain: 'mail-outline',
+      phone: 'call-outline',
+      phone_plain: 'call-outline',
+      sms: 'chatbubble-outline',
+      wifi: 'wifi-outline',
+      contact: 'person-outline',
+      event: 'calendar-outline',
+      text: 'document-text-outline',
     };
-    return icons[dataType] || '📄';
+    return icons[dataType] || 'document-outline';
   }, [dataType]);
 
   const formatTimestamp = (timestamp: number) => {
@@ -207,24 +217,72 @@ const ScanDetailsScreen: React.FC = () => {
       if (supported) {
         Linking.openURL(url);
       } else {
-        Alert.alert('Error', 'Cannot open this link');
+        showAlert({
+          type: 'error',
+          title: 'Cannot Open Link',
+          message: 'This link type is not supported on your device.',
+        });
       }
     });
-  }, [scan.data, dataType]);
+  }, [scan.data, dataType, showAlert]);
 
   const handleDelete = useCallback(() => {
-    Alert.alert('Delete Scan', 'Are you sure you want to delete this scan?', [
-      {text: 'Cancel', style: 'cancel'},
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteScanRecord(scan.id);
-          navigation.goBack();
+    showAlert({
+      type: 'confirm',
+      icon: 'trash-outline',
+      title: 'Delete Scan',
+      message: 'Are you sure you want to delete this scan?',
+      buttons: [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const token = await getAccessToken();
+            await deleteScanRecord(scan.id, token, backendUrl);
+            navigation.goBack();
+          },
         },
-      },
-    ]);
-  }, [scan.id, navigation]);
+      ],
+    });
+  }, [scan.id, navigation, getAccessToken, backendUrl, showAlert]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!scan.tkData) {
+      return;
+    }
+
+    setDownloading(true);
+    try {
+      const filePath = await generateTicketPdf(scan);
+
+      // Copy to Downloads on Android
+      if (Platform.OS === 'android') {
+        const ticketCode = (scan.tkData as TKTicketData).ticketCode || 'ticket';
+        const destPath = `${ReactNativeBlobUtil.fs.dirs.DownloadDir}/Ticket-${ticketCode}.pdf`;
+        await ReactNativeBlobUtil.fs.cp(filePath, destPath);
+
+        ReactNativeBlobUtil.android.addCompleteDownload({
+          title: `Ticket ${ticketCode}`,
+          description: 'Ticket PDF downloaded',
+          mime: 'application/pdf',
+          path: destPath,
+          showNotification: true,
+        });
+      }
+
+      showToast('PDF saved to Downloads');
+    } catch (err) {
+      console.error('[PDF] Error:', err);
+      showAlert({
+        type: 'error',
+        title: 'Download Failed',
+        message: err instanceof Error ? err.message : 'Could not generate PDF',
+      });
+    } finally {
+      setDownloading(false);
+    }
+  }, [scan, showToast, showAlert]);
 
   const canOpenLink =
     dataType === 'url' ||
@@ -278,6 +336,53 @@ const ScanDetailsScreen: React.FC = () => {
     const badge = verificationBadge();
     const ticketLocal = tkData as TKTicketData;
 
+    console.log('[SCAN-DETAILS] ── Scan Record ──');
+    console.log('[SCAN-DETAILS]   ID:', scan.id);
+    console.log('[SCAN-DETAILS]   Type:', scan.type);
+    console.log('[SCAN-DETAILS]   Verified:', verified);
+    console.log('[SCAN-DETAILS]   isTicket:', isTicket, '| isTruck:', isTruck);
+    console.log('[SCAN-DETAILS] ── TK Data ──');
+    console.log('[SCAN-DETAILS]   Kind:', tkData.kind);
+    console.log('[SCAN-DETAILS]   Ticket #:', (tkData as any).ticketCode);
+    console.log('[SCAN-DETAILS]   Order #:', (tkData as any).orderCode);
+    console.log('[SCAN-DETAILS]   Order ID:', (tkData as any).orderId);
+    console.log('[SCAN-DETAILS]   Truck #:', tkData.truckCode);
+    console.log('[SCAN-DETAILS]   Tenant:', tkData.tenantName);
+    console.log('[SCAN-DETAILS]   IAT:', tkData.iat ? new Date(tkData.iat).toISOString() : 'N/A');
+    console.log('[SCAN-DETAILS] ── API Data ──');
+    console.log('[SCAN-DETAILS]   Has apiData:', !!apiData);
+    console.log('[SCAN-DETAILS]   Has apiTicket:', !!apiTicket);
+    console.log('[SCAN-DETAILS]   Has apiTruck:', !!apiTruck);
+    if (apiTicket) {
+      console.log('[SCAN-DETAILS]   Ticket Code:', apiTicket.ticket_code);
+      console.log('[SCAN-DETAILS]   Order Code:', apiTicket.order_code);
+      console.log('[SCAN-DETAILS]   Order Date:', apiTicket.order_date);
+      console.log('[SCAN-DETAILS]   Truck Code:', apiTicket.truck?.truck_code);
+      console.log('[SCAN-DETAILS]   Truck Desc:', apiTicket.truck?.truck_description);
+      console.log('[SCAN-DETAILS]   Driver:', apiTicket.driver_name);
+      console.log('[SCAN-DETAILS]   Plant:', apiTicket.plant_name);
+      console.log('[SCAN-DETAILS]   Status:', apiTicket.status_display);
+      console.log('[SCAN-DETAILS]   Load #:', apiTicket.load);
+      console.log('[SCAN-DETAILS]   Product:', apiTicket.product);
+      console.log('[SCAN-DETAILS]   Load Qty:', apiTicket.load_qty);
+      console.log('[SCAN-DETAILS]   Running/Ordered:', apiTicket.run_qty_ord_qty);
+      console.log('[SCAN-DETAILS]   Progress:', apiTicket.progress_display);
+      console.log('[SCAN-DETAILS]   Customer:', apiTicket.customer_name);
+      console.log('[SCAN-DETAILS]   Project:', apiTicket.project_name);
+      console.log('[SCAN-DETAILS]   Delivery:', apiTicket.delivery_address);
+      console.log('[SCAN-DETAILS]   Timestamps:', JSON.stringify(apiTicket.timestamps));
+    }
+    if (apiTruck) {
+      console.log('[SCAN-DETAILS]   Truck Code:', apiTruck.code);
+      console.log('[SCAN-DETAILS]   Description:', apiTruck.description);
+      console.log('[SCAN-DETAILS]   Driver:', apiTruck.current_driver_name);
+      console.log('[SCAN-DETAILS]   Status:', apiTruck.ticket_status);
+      console.log('[SCAN-DETAILS]   Order:', apiTruck.order_code);
+      console.log('[SCAN-DETAILS]   Customer:', apiTruck.customer_name);
+      console.log('[SCAN-DETAILS]   Delivery:', apiTruck.delivery_address);
+      console.log('[SCAN-DETAILS]   Plant:', apiTruck.plant_name);
+    }
+
     return (
       <View style={styles.container}>
         <Animated.ScrollView
@@ -292,7 +397,7 @@ const ScanDetailsScreen: React.FC = () => {
                 isTicket && styles.tkTicketHero,
                 isTruck && styles.tkTruckHero,
               ]}>
-              <Text style={styles.heroIcon}>{isTicket ? '🎫' : '🚛'}</Text>
+              <MCIcon name={isTicket ? 'ticket-confirmation-outline' : 'truck-outline'} size={40} color={theme.colors.primary.main} />
             </View>
             <Text style={styles.heroLabel}>
               {isTicket ? 'Ticket' : 'Truck'}
@@ -320,113 +425,273 @@ const ScanDetailsScreen: React.FC = () => {
 
           {/* Ticket-specific fields — prefer API data, fall back to QR data */}
           {isTicket && (
-            <View style={styles.card}>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Ticket #</Text>
-                <Text style={styles.infoValue}>
-                  {apiTicket?.ticket_code || ticketLocal.ticketCode}
-                </Text>
+            <>
+              {/* Ticket Info */}
+              <View style={styles.card}>
+                <Text style={styles.cardSectionTitle}>TICKET INFORMATION</Text>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Order</Text>
+                  <Text style={styles.infoValue}>
+                    {apiTicket?.order_code || ticketLocal.orderCode}
+                  </Text>
+                </View>
+                {apiTicket?.order_date && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Order Date</Text>
+                      <Text style={styles.infoValue}>{apiTicket.order_date}</Text>
+                    </View>
+                  </>
+                )}
+                <View style={styles.divider} />
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Truck</Text>
+                  <Text style={styles.infoValue}>
+                    {apiTicket?.truck?.truck_code || ticketLocal.truckCode}
+                  </Text>
+                </View>
+                {apiTicket?.truck?.truck_description && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Truck Description</Text>
+                      <Text style={styles.infoValue}>
+                        {apiTicket.truck.truck_description}
+                      </Text>
+                    </View>
+                  </>
+                )}
+                {apiTicket?.driver_name && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Driver</Text>
+                      <Text style={styles.infoValue}>{apiTicket.driver_name}</Text>
+                    </View>
+                  </>
+                )}
+                {apiTicket?.plant_name && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Plant</Text>
+                      <Text style={styles.infoValue}>{apiTicket.plant_name}</Text>
+                    </View>
+                  </>
+                )}
+                {apiTicket?.status_display && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Status</Text>
+                      <Text style={styles.infoValue}>
+                        {apiTicket.status_display}
+                      </Text>
+                    </View>
+                  </>
+                )}
+                {apiTicket?.load && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Load</Text>
+                      <Text style={styles.infoValue}>{apiTicket.load}</Text>
+                    </View>
+                  </>
+                )}
               </View>
-              <View style={styles.divider} />
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Order #</Text>
-                <Text style={styles.infoValue}>
-                  {apiTicket?.order_code || ticketLocal.orderCode}
-                </Text>
+
+              {/* Product & Quantity */}
+              {(apiTicket?.product || apiTicket?.load_qty || apiTicket?.progress_display) && (
+                <View style={styles.card}>
+                  <Text style={styles.cardSectionTitle}>PRODUCT & QUANTITY</Text>
+                  {apiTicket?.product && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Product</Text>
+                      <Text style={styles.infoValue}>{apiTicket.product}</Text>
+                    </View>
+                  )}
+                  {apiTicket?.load_qty && (
+                    <>
+                      {apiTicket?.product && <View style={styles.divider} />}
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Load Qty</Text>
+                        <Text style={styles.infoValue}>{apiTicket.load_qty}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket?.run_qty_ord_qty && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Running / Ordered</Text>
+                        <Text style={styles.infoValue}>{apiTicket.run_qty_ord_qty}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket?.progress_display && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Progress</Text>
+                        <Text style={styles.infoValue}>{apiTicket.progress_display}</Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+              )}
+
+              {/* Customer & Delivery */}
+              {(apiTicket?.customer_name || apiTicket?.delivery_address) && (
+                <View style={styles.card}>
+                  <Text style={styles.cardSectionTitle}>CUSTOMER & DELIVERY</Text>
+                  {apiTicket?.customer_name && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Customer</Text>
+                      <Text style={styles.infoValue}>{apiTicket.customer_name}</Text>
+                    </View>
+                  )}
+                  {apiTicket?.project_name && (
+                    <>
+                      {apiTicket?.customer_name && <View style={styles.divider} />}
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Project</Text>
+                        <Text style={styles.infoValue}>{apiTicket.project_name}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket?.delivery_address && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Delivery Address</Text>
+                        <Text style={styles.infoValue}>{apiTicket.delivery_address}</Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+              )}
+
+              {/* Timeline */}
+              {apiTicket?.timestamps && (
+                <View style={styles.card}>
+                  <Text style={styles.cardSectionTitle}>TIMELINE</Text>
+                  {apiTicket.timestamps.ticketed && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Ticketed</Text>
+                      <Text style={styles.infoValue}>{apiTicket.timestamps.ticketed}</Text>
+                    </View>
+                  )}
+                  {apiTicket.timestamps.loading && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Loading</Text>
+                        <Text style={styles.infoValue}>{apiTicket.timestamps.loading}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket.timestamps.loaded && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Loaded</Text>
+                        <Text style={styles.infoValue}>{apiTicket.timestamps.loaded}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket.timestamps.to_job && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>To Job</Text>
+                        <Text style={styles.infoValue}>{apiTicket.timestamps.to_job}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket.timestamps.eta_at_job && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>ETA At Job</Text>
+                        <Text style={styles.infoValue}>{apiTicket.timestamps.eta_at_job}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket.timestamps.at_job && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>At Job</Text>
+                        <Text style={styles.infoValue}>{apiTicket.timestamps.at_job}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket.timestamps.pouring && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Pouring</Text>
+                        <Text style={styles.infoValue}>{apiTicket.timestamps.pouring}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket.timestamps.washing && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Washing</Text>
+                        <Text style={styles.infoValue}>{apiTicket.timestamps.washing}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket.timestamps.to_plant && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>To Plant</Text>
+                        <Text style={styles.infoValue}>{apiTicket.timestamps.to_plant}</Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTicket.timestamps.at_plant && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>At Plant</Text>
+                        <Text style={styles.infoValue}>{apiTicket.timestamps.at_plant}</Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+              )}
+
+              {/* Scan Info */}
+              <View style={styles.card}>
+                <Text style={styles.cardSectionTitle}>SCAN INFORMATION</Text>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Scanned At</Text>
+                  <Text style={styles.infoValue}>
+                    {formatTimestamp(scan.timestamp)}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>QR Issued At</Text>
+                  <Text style={styles.infoValue}>
+                    {formatIssuedAt(tkData.iat)}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.divider} />
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Truck #</Text>
-                <Text style={styles.infoValue}>
-                  {apiTicket?.truck?.truck_code || ticketLocal.truckCode}
-                </Text>
-              </View>
-              {apiTicket?.status_display && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Status</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTicket.status_display}
-                    </Text>
-                  </View>
-                </>
-              )}
-              {apiTicket?.load && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Load #</Text>
-                    <Text style={styles.infoValue}>{apiTicket.load}</Text>
-                  </View>
-                </>
-              )}
-              {apiTicket?.product && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Product</Text>
-                    <Text style={styles.infoValue}>{apiTicket.product}</Text>
-                  </View>
-                </>
-              )}
-              {apiTicket?.load_qty && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Load Qty</Text>
-                    <Text style={styles.infoValue}>{apiTicket.load_qty}</Text>
-                  </View>
-                </>
-              )}
-              {apiTicket?.progress_display && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Progress</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTicket.progress_display}
-                    </Text>
-                  </View>
-                </>
-              )}
-              {apiTicket?.customer_name && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Customer</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTicket.customer_name}
-                    </Text>
-                  </View>
-                </>
-              )}
-              {apiTicket?.delivery_address && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Destination</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTicket.delivery_address}
-                    </Text>
-                  </View>
-                </>
-              )}
-              <View style={styles.divider} />
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Issued At</Text>
-                <Text style={styles.infoValue}>
-                  {formatIssuedAt(tkData.iat)}
-                </Text>
-              </View>
-            </View>
+            </>
           )}
 
           {/* Truck-specific fields */}
           {isTruck && (
             <View style={styles.card}>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Truck #</Text>
+                <Text style={styles.infoLabel}>Truck</Text>
                 <Text style={styles.infoValue}>
                   {apiTruck?.code || tkData.truckCode}
                 </Text>
@@ -518,18 +783,29 @@ const ScanDetailsScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Scan meta */}
-          <View style={styles.card}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Scanned At</Text>
-              <Text style={styles.infoValue}>
-                {formatTimestamp(scan.timestamp)}
-              </Text>
-            </View>
-          </View>
-
           {/* Actions */}
           <View style={styles.actionsContainer}>
+            {isTicket && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.primaryAction]}
+                onPress={handleDownloadPdf}
+                disabled={downloading}
+                activeOpacity={0.8}>
+                {downloading ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.primary.contrast}
+                    style={{marginRight: theme.spacing.xs}}
+                  />
+                ) : (
+                  <Icon name="download-outline" size={18} color={theme.colors.primary.contrast} style={styles.actionIcon} />
+                )}
+                <Text style={styles.primaryActionText}>
+                  {downloading ? 'Saving...' : 'Download Ticket'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <View style={styles.actionRow}>
               <TouchableOpacity
                 style={[
@@ -539,7 +815,7 @@ const ScanDetailsScreen: React.FC = () => {
                 ]}
                 onPress={handleShare}
                 activeOpacity={0.8}>
-                <Text style={styles.actionIcon}>📤</Text>
+                <Icon name="share-outline" size={18} color={theme.colors.text} style={styles.actionIcon} />
                 <Text style={styles.secondaryActionText}>Share</Text>
               </TouchableOpacity>
             </View>
@@ -548,7 +824,7 @@ const ScanDetailsScreen: React.FC = () => {
               style={[styles.actionButton, styles.dangerAction]}
               onPress={handleDelete}
               activeOpacity={0.8}>
-              <Text style={styles.actionIcon}>🗑️</Text>
+              <Icon name="trash-outline" size={18} color={theme.colors.error.main} style={styles.actionIcon} />
               <Text style={styles.dangerActionText}>Delete Scan</Text>
             </TouchableOpacity>
           </View>
@@ -564,7 +840,7 @@ const ScanDetailsScreen: React.FC = () => {
               },
             ]}
             pointerEvents="none">
-            <Text style={styles.toastText}>✓ {toastMessage}</Text>
+            <Text style={styles.toastText}><Icon name="checkmark-circle" size={14} color={theme.colors.common.white} /> {toastMessage}</Text>
           </Animated.View>
         )}
       </View>
@@ -581,7 +857,7 @@ const ScanDetailsScreen: React.FC = () => {
         {/* ── Hero ── */}
         <View style={styles.hero}>
           <View style={styles.heroIconCircle}>
-            <Text style={styles.heroIcon}>{dataTypeIcon}</Text>
+            <Icon name={dataTypeIconName} size={40} color={theme.colors.primary.main} />
           </View>
           <Text style={styles.heroLabel}>{dataTypeLabel}</Text>
           <View style={styles.formatBadge}>
@@ -601,7 +877,7 @@ const ScanDetailsScreen: React.FC = () => {
                 onPress={handleCopy}
                 activeOpacity={0.5}
                 hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-                <Text style={styles.inlineCopyIcon}>📋</Text>
+                <Icon name="copy-outline" size={18} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             </View>
             <Text style={styles.dataText} selectable>
@@ -642,13 +918,12 @@ const ScanDetailsScreen: React.FC = () => {
               style={[styles.actionButton, styles.primaryAction]}
               onPress={handleOpenLink}
               activeOpacity={0.8}>
-              <Text style={styles.actionIcon}>
-                {dataType === 'url'
-                  ? '🌐'
-                  : dataType.includes('email')
-                    ? '📧'
-                    : '📞'}
-              </Text>
+              <Icon
+                name={dataType === 'url' ? 'globe-outline' : dataType.includes('email') ? 'mail-outline' : 'call-outline'}
+                size={18}
+                color={theme.colors.primary.contrast}
+                style={styles.actionIcon}
+              />
               <Text style={styles.primaryActionText}>
                 {dataType === 'url'
                   ? 'Open URL'
@@ -668,7 +943,7 @@ const ScanDetailsScreen: React.FC = () => {
               ]}
               onPress={handleCopy}
               activeOpacity={0.8}>
-              <Text style={styles.actionIcon}>📋</Text>
+              <Icon name="copy-outline" size={18} color={theme.colors.text} style={styles.actionIcon} />
               <Text style={styles.secondaryActionText}>Copy</Text>
             </TouchableOpacity>
 
@@ -680,7 +955,7 @@ const ScanDetailsScreen: React.FC = () => {
               ]}
               onPress={handleShare}
               activeOpacity={0.8}>
-              <Text style={styles.actionIcon}>📤</Text>
+              <Icon name="share-outline" size={18} color={theme.colors.text} style={styles.actionIcon} />
               <Text style={styles.secondaryActionText}>Share</Text>
             </TouchableOpacity>
           </View>
@@ -689,7 +964,7 @@ const ScanDetailsScreen: React.FC = () => {
             style={[styles.actionButton, styles.dangerAction]}
             onPress={handleDelete}
             activeOpacity={0.8}>
-            <Text style={styles.actionIcon}>🗑️</Text>
+            <Icon name="trash-outline" size={18} color={theme.colors.error.main} style={styles.actionIcon} />
             <Text style={styles.dangerActionText}>Delete Scan</Text>
           </TouchableOpacity>
         </View>
@@ -703,7 +978,7 @@ const ScanDetailsScreen: React.FC = () => {
             {opacity: toastAnim, transform: [{translateY: toastTranslateY}]},
           ]}
           pointerEvents="none">
-          <Text style={styles.toastText}>✓ {toastMessage}</Text>
+          <Text style={styles.toastText}><Icon name="checkmark-circle" size={14} color={theme.colors.common.white} /> {toastMessage}</Text>
         </Animated.View>
       )}
     </View>
@@ -800,6 +1075,12 @@ const createStyles = (theme: ThemeType) =>
       padding: theme.spacing.md,
       marginBottom: theme.spacing.md,
       ...theme.shadows.sm,
+    },
+    cardSectionTitle: {
+      ...theme.typography.label,
+      color: theme.colors.textHint,
+      marginBottom: theme.spacing.sm,
+      letterSpacing: 1,
     },
     infoRow: {
       flexDirection: 'row',

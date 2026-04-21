@@ -9,6 +9,7 @@ import {
   StatusBar,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/Ionicons';
 import {Theme} from '../theme';
 
 interface PrivacyPolicyScreenProps {
@@ -17,32 +18,32 @@ interface PrivacyPolicyScreenProps {
 }
 
 interface PolicySection {
-  icon: string;
+  iconName: string;
   title: string;
   description: string;
 }
 
 const POLICY_SECTIONS: PolicySection[] = [
   {
-    icon: '📷',
+    iconName: 'camera-outline',
     title: 'Camera Access',
     description:
       'We require camera access solely to scan authorized tickets. Camera data is processed on-device and is never recorded, stored, or transmitted externally.',
   },
   {
-    icon: '📱',
+    iconName: 'phone-portrait-outline',
     title: 'Local Data Storage',
     description:
       'Scan history is stored exclusively on your device using local storage. No scan data is uploaded to external servers or cloud services.',
   },
   {
-    icon: '🔒',
+    iconName: 'lock-closed-outline',
     title: 'No Third-Party Sharing',
     description:
       'We do not collect, share, or sell any personal data or scan information to third parties. Your data stays on your device.',
   },
   {
-    icon: '🗑️',
+    iconName: 'trash-outline',
     title: 'Your Control',
     description:
       'You can clear all scan history at any time from within the app. Uninstalling the app permanently removes all locally stored data.',
@@ -114,7 +115,7 @@ const PrivacyPolicyScreen: React.FC<PrivacyPolicyScreenProps> = ({
                 backgroundColor: theme.colors.primaryTint,
               },
             ]}>
-            <Text style={styles.shieldIcon}>🛡️</Text>
+            <Icon name="shield-checkmark-outline" size={36} color={theme.colors.primary.main} />
           </View>
           <Text style={styles.title}>Privacy & Data Policy</Text>
           <Text style={styles.subtitle}>
@@ -135,7 +136,7 @@ const PrivacyPolicyScreen: React.FC<PrivacyPolicyScreenProps> = ({
                       backgroundColor: theme.colors.elevatedBackground,
                     },
                   ]}>
-                  <Text style={styles.sectionIcon}>{section.icon}</Text>
+                  <Icon name={section.iconName} size={20} color={theme.colors.primary.main} />
                 </View>
                 <View style={styles.sectionContent}>
                   <Text style={styles.sectionTitle}>{section.title}</Text>

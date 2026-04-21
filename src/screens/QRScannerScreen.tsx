@@ -22,6 +22,8 @@ import {
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import Icon from 'react-native-vector-icons/Ionicons';
+import MCIcon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useAppTheme} from '../contexts/ThemeContext';
 import {useAuth} from '../contexts/AuthContext';
 import {saveScanRecord, getScanHistory} from '../storage/scanHistory';
@@ -96,8 +98,13 @@ const QRScannerScreen: React.FC = () => {
       }, 800);
 
       const loadCount = async () => {
-        const data = await getScanHistory();
-        setHistoryCount(data.length);
+        try {
+          const token = await getAccessToken();
+          const result = await getScanHistory(token, backendUrl, 1, 1);
+          setHistoryCount(result?.pagination?.total ?? result?.records?.length ?? 0);
+        } catch {
+          setHistoryCount(0);
+        }
       };
       loadCount();
 
@@ -105,7 +112,7 @@ const QRScannerScreen: React.FC = () => {
         clearTimeout(cooldown);
         setIsActive(false); // Camera OFF only when leaving screen
       };
-    }, []),
+    }, [getAccessToken, backendUrl]),
   );
 
   // Brand header fade-in
@@ -267,7 +274,7 @@ const QRScannerScreen: React.FC = () => {
           }
 
           showFeedback('success');
-          await saveScanRecord(scanRecord);
+          await saveScanRecord(scanRecord, token, backendUrl);
           setHistoryCount(prev => prev + 1);
 
           scanCooldownRef.current = true;
@@ -280,7 +287,8 @@ const QRScannerScreen: React.FC = () => {
 
         // ── Non-TK QR: pass through directly ──
         showFeedback('success');
-        await saveScanRecord(scanRecord);
+        const nonTkToken = await getAccessToken();
+        await saveScanRecord(scanRecord, nonTkToken, backendUrl);
         setHistoryCount(prev => prev + 1);
 
         scanCooldownRef.current = true;
@@ -291,7 +299,7 @@ const QRScannerScreen: React.FC = () => {
         }, 650);
       } catch (err) {
         // Catch-all: ensure scanner always recovers from unexpected errors
-        console.error('[SCAN] Unexpected error:', err);
+        console.log('[SCAN] Unexpected error:', err);
         showFeedback('error');
         setErrorMessage('Something went wrong. Try again.');
         resetScanner();
@@ -438,12 +446,34 @@ const QRScannerScreen: React.FC = () => {
               TRUCKAST <Text style={[styles.brandAccent, {color: primary}]}>QR</Text>
             </Text>
             <View style={styles.brandBarSpacer} />
+
+            {/* History + Settings icons */}
+            <Animated.View
+              style={{transform: [{scale: historyBtnScale}]}}>
+              <TouchableOpacity
+                style={styles.topIconBtn}
+                onPress={handleHistoryPress}
+                onPressIn={onHistoryPressIn}
+                onPressOut={onHistoryPressOut}
+                activeOpacity={0.7}
+                hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                <Icon name="time-outline" size={18} color={theme.colors.common.white} />
+                {historyCount > 0 && (
+                  <View style={styles.topIconBadge}>
+                    <Text style={styles.topIconBadgeText}>
+                      {historyCount > 99 ? '99+' : historyCount}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </Animated.View>
+
             <TouchableOpacity
-              style={styles.settingsBtn}
+              style={styles.topIconBtn}
               onPress={handleSettingsPress}
               activeOpacity={0.7}
               hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-              <Text style={styles.settingsBtnIcon}>⚙️</Text>
+              <Icon name="settings-outline" size={18} color={theme.colors.common.white} />
             </TouchableOpacity>
           </Animated.View>
 
@@ -522,7 +552,7 @@ const QRScannerScreen: React.FC = () => {
                   },
                 ]}>
                 <View style={styles.successCircle}>
-                  <Text style={styles.feedbackSymbol}>✓</Text>
+                  <Icon name="checkmark" size={30} color={theme.colors.common.white} />
                 </View>
                 <Text style={styles.feedbackLabel}>Scanned!</Text>
               </Animated.View>
@@ -538,7 +568,7 @@ const QRScannerScreen: React.FC = () => {
                   },
                 ]}>
                 <View style={styles.errorCircle}>
-                  <Text style={styles.feedbackSymbol}>✕</Text>
+                  <Icon name="close" size={30} color={theme.colors.common.white} />
                 </View>
                 <Text style={styles.feedbackLabel}>
                   {errorMessage || 'Try again'}
@@ -551,49 +581,27 @@ const QRScannerScreen: React.FC = () => {
 
         {/* ── Bottom: controls ── */}
         <View style={styles.overlayBottom}>
-          {/* Flash toggle */}
+          {/* Flash toggle — centered */}
           <TouchableOpacity
             style={[
-              styles.controlPill,
-              flashOn && styles.controlPillActive,
+              styles.flashBtn,
+              flashOn && styles.flashBtnActive,
             ]}
             onPress={() => setFlashOn(prev => !prev)}
             activeOpacity={0.7}>
-            <Text style={styles.controlPillIcon}>
-              {flashOn ? '⚡' : '🔦'}
-            </Text>
+            <Icon
+              name={flashOn ? 'flash' : 'flash-outline'}
+              size={18}
+              color={flashOn ? theme.colors.common.black : theme.colors.scanner.controlText}
+            />
             <Text
               style={[
-                styles.controlPillLabel,
-                flashOn && styles.controlPillLabelActive,
+                styles.flashBtnLabel,
+                flashOn && styles.flashBtnLabelActive,
               ]}>
               {flashOn ? 'On' : 'Flash'}
             </Text>
           </TouchableOpacity>
-
-          {/* History navigation button */}
-          <Animated.View
-            style={[
-              styles.historyBtnWrap,
-              {transform: [{scale: historyBtnScale}]},
-            ]}>
-            <TouchableOpacity
-              style={styles.historyBtn}
-              onPress={handleHistoryPress}
-              onPressIn={onHistoryPressIn}
-              onPressOut={onHistoryPressOut}
-              activeOpacity={0.85}>
-              <Text style={styles.historyBtnIcon}>🕐</Text>
-              <Text style={styles.historyBtnText}>History</Text>
-              {historyCount > 0 && (
-                <View style={styles.historyBadge}>
-                  <Text style={styles.historyBadgeText}>
-                    {historyCount > 99 ? '99+' : historyCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </Animated.View>
 
           {/* Auth hint */}
           <Text style={styles.authHint}>Authorized ticket scanning only</Text>
@@ -719,16 +727,37 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
     brandBarSpacer: {
       flex: 1,
     },
-    settingsBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: theme.borderRadius.full,
+    topIconBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       backgroundColor: theme.colors.scanner.controlBackground,
       justifyContent: 'center',
       alignItems: 'center',
+      marginLeft: theme.spacing.sm,
+      position: 'relative',
     },
-    settingsBtnIcon: {
+    topIconText: {
       fontSize: 16,
+    },
+    topIconBadge: {
+      position: 'absolute',
+      top: -5,
+      right: -5,
+      backgroundColor: theme.colors.primary.main,
+      borderRadius: theme.borderRadius.full,
+      minWidth: 18,
+      height: 18,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 4,
+      borderWidth: 1.5,
+      borderColor: theme.colors.common.black,
+    },
+    topIconBadgeText: {
+      fontSize: 9,
+      color: theme.colors.primary.contrast,
+      fontWeight: '700',
     },
     instructionArea: {
       flex: 1,
@@ -878,66 +907,28 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       alignItems: 'center',
       paddingTop: theme.spacing['2xl'],
     },
-    controlPill: {
+    flashBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: theme.colors.scanner.controlBackground,
       borderRadius: theme.borderRadius.full,
-      paddingVertical: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.md,
-      gap: theme.spacing.xxs,
+      paddingVertical: theme.spacing.xs + 2,
+      paddingHorizontal: theme.spacing.lg,
+      gap: theme.spacing.xs,
       marginBottom: theme.spacing.xl,
     },
-    controlPillActive: {
+    flashBtnActive: {
       backgroundColor: theme.colors.scanner.flashlight,
     },
-    controlPillIcon: {
-      fontSize: 14,
-    },
-    controlPillLabel: {
-      ...theme.typography.captionSmall,
-      color: theme.colors.scanner.controlText,
-    },
-    controlPillLabelActive: {
-      color: theme.colors.common.black,
-    },
-
-    // History button
-    historyBtnWrap: {
-      marginBottom: theme.spacing.xl,
-    },
-    historyBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: theme.colors.scanner.buttonBackground,
-      borderWidth: 1,
-      borderColor: theme.colors.scanner.buttonBorder,
-      borderRadius: theme.borderRadius.full,
-      paddingVertical: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.xl,
-      gap: theme.spacing.xs,
-    },
-    historyBtnIcon: {
+    flashBtnIcon: {
       fontSize: 16,
     },
-    historyBtnText: {
+    flashBtnLabel: {
       ...theme.typography.buttonSmall,
-      color: theme.colors.common.white,
+      color: theme.colors.scanner.controlText,
     },
-    historyBadge: {
-      backgroundColor: theme.colors.primary.main,
-      borderRadius: theme.borderRadius.full,
-      minWidth: 20,
-      height: 20,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: theme.spacing.xxs + 2,
-      marginLeft: theme.spacing.xxs,
-    },
-    historyBadgeText: {
-      ...theme.typography.captionSmall,
-      color: theme.colors.primary.contrast,
-      fontWeight: theme.fontWeight.semiBold,
+    flashBtnLabelActive: {
+      color: theme.colors.common.black,
     },
     authHint: {
       ...theme.typography.captionSmall,

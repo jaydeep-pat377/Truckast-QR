@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Platform} from 'react-native';
+import {ENV} from '../config/env';
+import {checkNetwork} from '../utils/network';
 import type {LoginResponse, AuthTokens, User} from '../types';
 
-const AUTH_BASE_URL = 'https://api.truckast.ai';
+const AUTH_BASE_URL = ENV.AUTH_BASE_URL;
 const TOKEN_KEY = '@auth_tokens';
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -24,7 +26,33 @@ async function authRequest<T>(
   } = {},
 ): Promise<T> {
   const {method = 'POST', body, token} = options;
+
+  const isOnline = await checkNetwork();
+  if (!isOnline) {
+    throw new AuthError('No internet connection', 0);
+  }
+
   const url = `${AUTH_BASE_URL}${path}`;
+
+  // Log request details
+  console.log(`[AUTH] ➡️ ${method} ${path}`);
+  console.log(`[AUTH]    Base URL: ${AUTH_BASE_URL}`);
+  console.log(`[AUTH]    Full URL: ${url}`);
+  if (body) {
+    // Mask password in logs
+    const safeBody = {...body};
+    if ('password' in safeBody) {
+      safeBody.password = '***';
+    }
+    if ('client_secret' in safeBody) {
+      safeBody.client_secret = '***';
+    }
+    if ('refreshToken' in safeBody) {
+      safeBody.refreshToken = '***' + String(safeBody.refreshToken).slice(-6);
+    }
+    console.log(`[AUTH]    Body:`, JSON.stringify(safeBody));
+  }
+  console.log(`[AUTH]    Auth: ${token ? 'Bearer ***' + token.slice(-6) : 'none'}`);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -39,12 +67,15 @@ async function authRequest<T>(
   }
 
   try {
+    const startTime = Date.now();
     const response = await fetch(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     });
+
+    const elapsed = Date.now() - startTime;
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
@@ -57,14 +88,22 @@ async function authRequest<T>(
           message = text;
         }
       }
+      console.log(`[AUTH] ❌ ${method} ${path} → ${response.status} (${elapsed}ms)`);
+      console.log(`[AUTH]    Error: ${message}`);
       throw new AuthError(message, response.status);
     }
 
-    return (await response.json()) as T;
+    const data = (await response.json()) as T;
+    const responsePreview = JSON.stringify(data).substring(0, 300);
+    console.log(`[AUTH] ✅ ${method} ${path} → ${response.status} (${elapsed}ms)`);
+    console.log(`[AUTH]    Response: ${responsePreview}`);
+    return data;
   } catch (err) {
     if (err instanceof AuthError) {
       throw err;
     }
+    console.log(`[AUTH] ❌ ${method} ${path} → Network Error`);
+    console.log(`[AUTH]    Error: ${err instanceof Error ? err.message : err}`);
     throw new AuthError(
       err instanceof Error ? err.message : 'Network request failed',
       0,
