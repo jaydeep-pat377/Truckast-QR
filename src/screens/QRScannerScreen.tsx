@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -11,6 +11,8 @@ import {
   Platform,
   Vibration,
   StatusBar,
+  Modal,
+  Pressable,
   useWindowDimensions,
 } from 'react-native';
 import {
@@ -19,19 +21,18 @@ import {
   useCameraPermission,
   useCodeScanner,
 } from 'react-native-vision-camera';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {useNavigation, useFocusEffect} from '@react-navigation/native';
-import {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 import MCIcon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {useAppTheme} from '../contexts/ThemeContext';
-import {useAuth} from '../contexts/AuthContext';
-import {saveScanRecord, getScanHistory} from '../storage/scanHistory';
-import {RootStackParamList, ScanRecord} from '../types';
-import {isTKQR, isTKPipeQR} from '../utils/qrDecryption';
-import {verifyQRPayload} from '../services/ticketService';
+import { useAppTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { saveScanRecord, getScanHistory } from '../storage/scanHistory';
+import { RootStackParamList, ScanRecord } from '../types';
+import { isTKQR, isTKPipeQR } from '../utils/qrDecryption';
+import { verifyQRPayload } from '../services/ticketService';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const brandLogo = require('../assets/logo.png');
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -46,11 +47,11 @@ const CORNER_RADIUS = 14;
 
 const QRScannerScreen: React.FC = () => {
   const theme = useAppTheme();
-  const {getAccessToken, backendUrl} = useAuth();
+  const { getAccessToken, backendUrl, qrUserActive, user, logout } = useAuth();
   const insets = useSafeAreaInsets();
-  const {width: screenWidth} = useWindowDimensions();
+  const { width: screenWidth } = useWindowDimensions();
   const navigation = useNavigation<NavigationProp>();
-  const {hasPermission, requestPermission} = useCameraPermission();
+  const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const [isActive, setIsActive] = useState(true);
   const [flashOn, setFlashOn] = useState(false);
@@ -63,7 +64,6 @@ const QRScannerScreen: React.FC = () => {
 
   const SCAN_AREA_SIZE = Math.min(screenWidth * 0.65, 260);
 
-  // Animations
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const cornerPulseAnim = useRef(new Animated.Value(0.6)).current;
   const feedbackScaleAnim = useRef(new Animated.Value(0.3)).current;
@@ -72,10 +72,8 @@ const QRScannerScreen: React.FC = () => {
   const historyBtnScale = useRef(new Animated.Value(1)).current;
   const brandFadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Load history count + reset scanner on focus
   useFocusEffect(
     useCallback(() => {
-      // Clear any pending timers from previous scan
       if (navTimeoutRef.current) {
         clearTimeout(navTimeoutRef.current);
         navTimeoutRef.current = null;
@@ -85,11 +83,8 @@ const QRScannerScreen: React.FC = () => {
         cooldownTimerRef.current = null;
       }
 
-      // Camera ON — never toggle isActive during scanning,
-      // only on screen focus/blur to avoid vision-camera restart bugs
       setIsActive(true);
 
-      // Brief cooldown on return to prevent instant re-scan
       scanCooldownRef.current = true;
       const cooldown = setTimeout(() => {
         scanCooldownRef.current = false;
@@ -110,12 +105,16 @@ const QRScannerScreen: React.FC = () => {
 
       return () => {
         clearTimeout(cooldown);
-        setIsActive(false); // Camera OFF only when leaving screen
+        if (logoutTimerRef.current) {
+          clearTimeout(logoutTimerRef.current);
+          logoutTimerRef.current = null;
+        }
+        setIsActive(false);
+        setErrorSheetVisible(false);
       };
     }, [getAccessToken, backendUrl]),
   );
 
-  // Brand header fade-in
   useEffect(() => {
     Animated.timing(brandFadeAnim, {
       toValue: 1,
@@ -124,7 +123,6 @@ const QRScannerScreen: React.FC = () => {
     }).start();
   }, [brandFadeAnim]);
 
-  // Scan line sweep
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
@@ -144,7 +142,6 @@ const QRScannerScreen: React.FC = () => {
     return () => animation.stop();
   }, [scanLineAnim]);
 
-  // Corner pulse
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
@@ -164,7 +161,6 @@ const QRScannerScreen: React.FC = () => {
     return () => animation.stop();
   }, [cornerPulseAnim]);
 
-  // Scan line glow
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
@@ -206,17 +202,30 @@ const QRScannerScreen: React.FC = () => {
     [feedbackScaleAnim, feedbackOpacityAnim],
   );
 
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorSheetVisible, setErrorSheetVisible] = useState(false);
+  const [errorSheetTitle, setErrorSheetTitle] = useState('');
+  const [errorSheetMessage, setErrorSheetMessage] = useState('');
+  const [errorSheetIcon, setErrorSheetIcon] = useState('alert-circle-outline');
+  const [errorSheetDismissable, setErrorSheetDismissable] = useState(true);
+  const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const resetScanner = useCallback((delay = 2000) => {
-    cooldownTimerRef.current = setTimeout(() => {
-      cooldownTimerRef.current = null;
-      setFeedbackState('idle');
-      setErrorMessage('');
-      isProcessing.current = false;
-      scanCooldownRef.current = false;
-    }, delay);
+  const showErrorSheet = useCallback((title: string, message: string, icon = 'alert-circle-outline', dismissable = true) => {
+    setFeedbackState('idle');
+    setErrorSheetTitle(title);
+    setErrorSheetMessage(message);
+    setErrorSheetIcon(icon);
+    setErrorSheetDismissable(dismissable);
+    setErrorSheetVisible(true);
   }, []);
+
+  const dismissErrorSheet = useCallback(() => {
+    if (!errorSheetDismissable) {
+      return;
+    }
+    setErrorSheetVisible(false);
+    isProcessing.current = false;
+    scanCooldownRef.current = false;
+  }, [errorSheetDismissable]);
 
   const processScanResult = useCallback(
     async (data: string, type: string) => {
@@ -228,49 +237,51 @@ const QRScannerScreen: React.FC = () => {
           timestamp: Date.now(),
         };
 
-        // ── Check QR type ──
         const isTK = isTKQR(data);
         const isPipe = isTKPipeQR(data);
-        console.log('[SCAN] isTKQR:', isTK, '| isTKPipeQR:', isPipe, '| data preview:', data.substring(0, 50));
 
-        // ── TK QR: send to server for decryption + verification ──
         if (isTK || isPipe) {
           setFeedbackState('processing');
 
           const token = await getAccessToken();
-          console.log('[SCAN] Token available:', !!token, '| backendUrl:', backendUrl);
+          const result = await verifyQRPayload(data, token, backendUrl, user?.userRole);
 
-          const result = await verifyQRPayload(data, token, backendUrl);
-          console.log('[SCAN] Server result:', result.status, '| message:', result.message, '| hasQrData:', !!result.qrData, '| hasApiData:', !!result.apiData);
+          if (result.status === 'unauthorized') {
+            showErrorSheet('Not Authorized', result.message || 'You are not authorized as a QR user.', 'lock-closed-outline', false);
+            logoutTimerRef.current = setTimeout(() => {
+              logoutTimerRef.current = null;
+              logout();
+            }, 3000);
+            return;
+          }
 
           if (result.status === 'not_found') {
-            showFeedback('error');
-            setErrorMessage(result.message || 'Ticket not found');
-            resetScanner();
+            showErrorSheet('Ticket Not Found', result.message || 'Ticket not found', 'search-outline');
             return;
           }
 
           if (result.status === 'error') {
-            showFeedback('error');
-            setErrorMessage(result.message || 'Verification failed');
-            resetScanner();
+            showErrorSheet('Unable to Scan', result.message || 'Verification failed', 'alert-circle-outline');
             return;
           }
 
           if (result.status === 'offline') {
-            showFeedback('error');
-            setErrorMessage(result.message || 'Network error');
-            resetScanner();
+            showErrorSheet('No Connection', result.message || 'Network error', 'cloud-offline-outline');
             return;
           }
 
-          // Verified — store data and navigate
           scanRecord.verified = result.status;
           if (result.qrData) {
             scanRecord.tkData = result.qrData;
           }
           if (result.apiData) {
             scanRecord.apiData = result.apiData;
+          }
+          if (result.fullTicket) {
+            scanRecord.fullTicket = result.fullTicket;
+          }
+          if (result.orderCode) {
+            scanRecord.orderCode = result.orderCode;
           }
 
           showFeedback('success');
@@ -280,12 +291,11 @@ const QRScannerScreen: React.FC = () => {
           scanCooldownRef.current = true;
           navTimeoutRef.current = setTimeout(() => {
             navTimeoutRef.current = null;
-            navigation.navigate('ScanDetails', {scan: scanRecord});
+            navigation.navigate('ScanDetails', { scan: scanRecord });
           }, 650);
           return;
         }
 
-        // ── Non-TK QR: pass through directly ──
         showFeedback('success');
         const nonTkToken = await getAccessToken();
         await saveScanRecord(scanRecord, nonTkToken, backendUrl);
@@ -295,31 +305,23 @@ const QRScannerScreen: React.FC = () => {
 
         navTimeoutRef.current = setTimeout(() => {
           navTimeoutRef.current = null;
-          navigation.navigate('ScanDetails', {scan: scanRecord});
+          navigation.navigate('ScanDetails', { scan: scanRecord });
         }, 650);
       } catch (err) {
-        // Catch-all: ensure scanner always recovers from unexpected errors
-        console.log('[SCAN] Unexpected error:', err);
-        showFeedback('error');
-        setErrorMessage('Something went wrong. Try again.');
-        resetScanner();
+        showErrorSheet('Something Went Wrong', 'Please try scanning again.', 'alert-circle-outline');
       }
     },
-    [navigation, showFeedback, resetScanner, getAccessToken, backendUrl],
+    [navigation, showFeedback, showErrorSheet, getAccessToken, backendUrl, user, logout],
   );
 
   const codeScanner = useCodeScanner({
     codeTypes: ['qr'],
     onCodeScanned: (codes) => {
-      console.log('[SCANNER] onCodeScanned! count:', codes.length);
-
       if (isProcessing.current || scanCooldownRef.current || codes.length === 0) {
         return;
       }
 
       const value = codes[0].value || '';
-      console.log('[SCANNER] value:', value.substring(0, 60));
-
       if (!value) {
         return;
       }
@@ -359,7 +361,6 @@ const QRScannerScreen: React.FC = () => {
   const styles = createStyles(theme, SCAN_AREA_SIZE);
   const primary = theme.colors.primary.main;
 
-  // ── Permission screen ──
   if (!hasPermission) {
     return (
       <View style={styles.permissionContainer}>
@@ -367,7 +368,7 @@ const QRScannerScreen: React.FC = () => {
         <View style={styles.permissionCard}>
           <Image source={brandLogo} style={styles.permissionLogo} />
           <Text style={styles.permissionBrand}>
-            TRUCKAST <Text style={{color: primary}}>QR</Text>
+            TRUCKAST <Text style={{ color: primary }}>QR</Text>
           </Text>
           <Text style={styles.permissionTitle}>Camera Access Required</Text>
           <Text style={styles.permissionText}>
@@ -390,7 +391,6 @@ const QRScannerScreen: React.FC = () => {
     );
   }
 
-  // ── Loading camera ──
   if (!device) {
     return (
       <View style={styles.permissionContainer}>
@@ -398,9 +398,9 @@ const QRScannerScreen: React.FC = () => {
         <ActivityIndicator
           size="large"
           color={primary}
-          style={{marginTop: theme.spacing.xl}}
+          style={{ marginTop: theme.spacing.xl }}
         />
-        <Text style={[styles.loadingText, {marginTop: theme.spacing.md}]}>
+        <Text style={[styles.loadingText, { marginTop: theme.spacing.md }]}>
           Initializing camera...
         </Text>
       </View>
@@ -431,32 +431,28 @@ const QRScannerScreen: React.FC = () => {
         photo={true}
       />
 
-      {/* ── Full-screen overlay ── */}
       <View style={styles.overlay}>
-        {/* ── Top: Brand header + instructions ── */}
         <View style={styles.overlayTop}>
-          {/* Brand bar */}
           <Animated.View
             style={[
               styles.brandBar,
-              {paddingTop: insets.top + 8, opacity: brandFadeAnim},
+              { paddingTop: insets.top + 8, opacity: brandFadeAnim },
             ]}>
             <Image source={brandLogo} style={styles.brandLogo} />
             <Text style={styles.brandName}>
-              TRUCKAST <Text style={[styles.brandAccent, {color: primary}]}>QR</Text>
+              TRUCKAST <Text style={[styles.brandAccent, { color: primary }]}>QR</Text>
             </Text>
             <View style={styles.brandBarSpacer} />
 
-            {/* History + Settings icons */}
             <Animated.View
-              style={{transform: [{scale: historyBtnScale}]}}>
+              style={{ transform: [{ scale: historyBtnScale }] }}>
               <TouchableOpacity
                 style={styles.topIconBtn}
                 onPress={handleHistoryPress}
                 onPressIn={onHistoryPressIn}
                 onPressOut={onHistoryPressOut}
                 activeOpacity={0.7}
-                hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Icon name="time-outline" size={18} color={theme.colors.common.white} />
                 {historyCount > 0 && (
                   <View style={styles.topIconBadge}>
@@ -472,12 +468,11 @@ const QRScannerScreen: React.FC = () => {
               style={styles.topIconBtn}
               onPress={handleSettingsPress}
               activeOpacity={0.7}
-              hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Icon name="settings-outline" size={18} color={theme.colors.common.white} />
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Instructions (pushed to bottom of flex area, above scanner) */}
           <View style={styles.instructionArea}>
             <Text style={styles.headerTitle}>Scan your ticket</Text>
             <Text style={styles.headerSubtitle}>
@@ -486,7 +481,6 @@ const QRScannerScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* ── Middle: scan frame cutout ── */}
         <View style={styles.overlayMiddleRow}>
           <View style={styles.overlaySide} />
           <View style={styles.scanArea}>
@@ -494,28 +488,28 @@ const QRScannerScreen: React.FC = () => {
               style={[
                 styles.corner,
                 styles.cornerTL,
-                {opacity: cornerPulseAnim},
+                { opacity: cornerPulseAnim },
               ]}
             />
             <Animated.View
               style={[
                 styles.corner,
                 styles.cornerTR,
-                {opacity: cornerPulseAnim},
+                { opacity: cornerPulseAnim },
               ]}
             />
             <Animated.View
               style={[
                 styles.corner,
                 styles.cornerBL,
-                {opacity: cornerPulseAnim},
+                { opacity: cornerPulseAnim },
               ]}
             />
             <Animated.View
               style={[
                 styles.corner,
                 styles.cornerBR,
-                {opacity: cornerPulseAnim},
+                { opacity: cornerPulseAnim },
               ]}
             />
 
@@ -523,10 +517,10 @@ const QRScannerScreen: React.FC = () => {
               <Animated.View
                 style={[
                   styles.scanLineWrap,
-                  {transform: [{translateY: scanLineTranslateY}]},
+                  { transform: [{ translateY: scanLineTranslateY }] },
                 ]}>
                 <Animated.View
-                  style={[styles.scanLineGlow, {opacity: scanLineGlowAnim}]}
+                  style={[styles.scanLineGlow, { opacity: scanLineGlowAnim }]}
                 />
                 <View style={styles.scanLine} />
               </Animated.View>
@@ -548,7 +542,7 @@ const QRScannerScreen: React.FC = () => {
                   styles.feedbackCenter,
                   {
                     opacity: feedbackOpacityAnim,
-                    transform: [{scale: feedbackScaleAnim}],
+                    transform: [{ scale: feedbackScaleAnim }],
                   },
                 ]}>
                 <View style={styles.successCircle}>
@@ -558,30 +552,11 @@ const QRScannerScreen: React.FC = () => {
               </Animated.View>
             )}
 
-            {feedbackState === 'error' && (
-              <Animated.View
-                style={[
-                  styles.feedbackCenter,
-                  {
-                    opacity: feedbackOpacityAnim,
-                    transform: [{scale: feedbackScaleAnim}],
-                  },
-                ]}>
-                <View style={styles.errorCircle}>
-                  <Icon name="close" size={30} color={theme.colors.common.white} />
-                </View>
-                <Text style={styles.feedbackLabel}>
-                  {errorMessage || 'Try again'}
-                </Text>
-              </Animated.View>
-            )}
           </View>
           <View style={styles.overlaySide} />
         </View>
 
-        {/* ── Bottom: controls ── */}
         <View style={styles.overlayBottom}>
-          {/* Flash toggle — centered */}
           <TouchableOpacity
             style={[
               styles.flashBtn,
@@ -603,15 +578,32 @@ const QRScannerScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
 
-          {/* Auth hint */}
           <Text style={styles.authHint}>Authorized ticket scanning only</Text>
         </View>
       </View>
+
+      <Modal
+        visible={errorSheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={dismissErrorSheet}>
+        <Pressable style={styles.errorSheetOverlay} onPress={dismissErrorSheet}>
+          <Pressable
+            style={[styles.errorSheetCard, { paddingBottom: Math.max(insets.bottom, 24) }]}
+            onPress={() => { }}>
+            <View style={styles.errorSheetHandle} />
+            <View style={styles.errorSheetIconCircle}>
+              <Icon name={errorSheetIcon} size={32} color={theme.colors.common.white} />
+            </View>
+            <Text style={styles.errorSheetTitle}>{errorSheetTitle}</Text>
+            <Text style={styles.errorSheetMessage}>{errorSheetMessage}</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
 
-// ── Styles ────────────────────────────────────────────────
 const createStyles = (theme: ThemeType, scanAreaSize: number) =>
   StyleSheet.create({
     container: {
@@ -619,7 +611,6 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       backgroundColor: theme.colors.common.black,
     },
 
-    // ── Permission / Loading ──
     permissionContainer: {
       flex: 1,
       justifyContent: 'center',
@@ -692,13 +683,11 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       textAlign: 'center',
     },
 
-    // ── Overlay ──
     overlay: {
       ...StyleSheet.absoluteFill,
       justifyContent: 'space-between',
     },
 
-    // Top section: brand bar + instructions
     overlayTop: {
       flex: 1,
       backgroundColor: theme.colors.scanner.overlay,
@@ -776,7 +765,6 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       letterSpacing: 0.3,
     },
 
-    // Middle: scan frame
     overlayMiddleRow: {
       flexDirection: 'row',
     },
@@ -825,7 +813,6 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       borderBottomRightRadius: CORNER_RADIUS,
     },
 
-    // Scan line
     scanLineWrap: {
       position: 'absolute',
       left: CORNER_LENGTH / 2,
@@ -849,13 +836,12 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       backgroundColor: theme.colors.primary.main,
       borderRadius: 1,
       shadowColor: theme.colors.primary.main,
-      shadowOffset: {width: 0, height: 0},
+      shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.9,
       shadowRadius: 6,
       elevation: 4,
     },
 
-    // Feedback
     feedbackCenter: {
       ...StyleSheet.absoluteFill,
       justifyContent: 'center',
@@ -870,7 +856,7 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       justifyContent: 'center',
       alignItems: 'center',
       shadowColor: theme.colors.success.main,
-      shadowOffset: {width: 0, height: 0},
+      shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.5,
       shadowRadius: 16,
       elevation: 8,
@@ -883,7 +869,7 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       justifyContent: 'center',
       alignItems: 'center',
       shadowColor: theme.colors.error.main,
-      shadowOffset: {width: 0, height: 0},
+      shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.5,
       shadowRadius: 16,
       elevation: 8,
@@ -899,7 +885,6 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       marginTop: theme.spacing.sm,
     },
 
-    // Bottom overlay
     overlayBottom: {
       flex: 1,
       backgroundColor: theme.colors.scanner.overlay,
@@ -935,6 +920,68 @@ const createStyles = (theme: ThemeType, scanAreaSize: number) =>
       color: theme.colors.scanner.hintText,
       textAlign: 'center',
       letterSpacing: 0.4,
+    },
+
+    errorSheetOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    errorSheetCard: {
+      backgroundColor: theme.colors.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingTop: theme.spacing.md,
+      paddingHorizontal: theme.spacing['2xl'],
+      alignItems: 'center',
+    },
+    errorSheetHandle: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: theme.colors.border,
+      marginBottom: theme.spacing.xl,
+    },
+    errorSheetIconCircle: {
+      width: 68,
+      height: 68,
+      borderRadius: 34,
+      backgroundColor: theme.colors.error.main,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: theme.spacing.lg,
+      shadowColor: theme.colors.error.main,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    errorSheetTitle: {
+      ...theme.typography.h3,
+      color: theme.colors.text,
+      textAlign: 'center',
+      marginBottom: theme.spacing.sm,
+    },
+    errorSheetMessage: {
+      ...theme.typography.body,
+      color: theme.colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 22,
+      marginBottom: theme.spacing.xl,
+      paddingHorizontal: theme.spacing.md,
+    },
+    errorSheetButton: {
+      backgroundColor: theme.colors.primary.main,
+      borderRadius: theme.borderRadius.lg,
+      height: theme.componentHeight.button,
+      justifyContent: 'center',
+      alignItems: 'center',
+      flexDirection: 'row',
+      width: '100%',
+    },
+    errorSheetButtonText: {
+      ...theme.typography.button,
+      color: theme.colors.primary.contrast,
     },
   });
 

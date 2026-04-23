@@ -1,5 +1,3 @@
-// ── TK QR decrypted payloads ──
-
 export interface TKTicketData {
   kind: 'ticket';
   orderCode: string;
@@ -31,11 +29,77 @@ export interface TKTruckData {
 
 export type TKQRData = TKTicketData | TKTruckData;
 
-// ── API response types ──
+export interface TicketProduct {
+  id: number;
+  ticket_id: number;
+  product_id?: number | null;
+  item_id?: number | null;
+  item_code: string | null;
+  description: string | null;
+  short_description?: string | null;
+  is_mix: boolean | null;
+  is_assoc?: boolean | null;
+  ticket_qty?: number | null;
+  ticket_qty_unit?: string | null;
+  delv_qty?: number | null;
+  delv_qty_unit?: string | null;
+  order_qty?: number | null;
+  order_qty_unit?: string | null;
+  load_qty?: number | null;
+  acc_delv_qty?: number | null;
+}
 
-export type VerificationStatus = 'verified' | 'not_found' | 'offline' | 'error';
+export interface FullTicket {
+  ticket_id: number;
+  ticket_code: string;
+  created_date: string;
+  order_date: string;
+  order_code: string;
+  customer_name: string;
+  delivery_addr1: string | null;
+  delivery_addr2: string | null;
+  delivery_addr3: string | null;
+  plant_code: string | null;
+  plant_name: string | null;
+  truck_code: string | null;
+  driver_name?: string | null;
+  project_name?: string | null;
+  lot_block_number?: string | null;
+  customer_job?: string | null;
+  job_number?: string | null;
+  purchase_order?: string | null;
+  ordered_by_name?: string | null;
+  ordered_by_phone?: string | null;
+  special_instructions?: string | null;
+  plant_address?: string | null;
+  slump?: string | null;
+  truck_ahead?: string | null;
+  amount: number | null;
+  scheduled_on_job_time: string | null;
+  printed_time: string | null;
+  load_time: string | null;
+  loaded_time: string | null;
+  to_job_time: string | null;
+  on_job_time: string | null;
+  unload_time: string | null;
+  end_unload: string | null;
+  wash_time: string | null;
+  to_plant_time: string | null;
+  at_plant_time: string | null;
+  print_mix_weight: string | null;
+  remove_reason_code: string | null;
+  current_status: string;
+  weather_data?: {
+    temperature_fahrenheit: number;
+    weather_description: string;
+    [key: string]: unknown;
+  } | null;
+  ticket_products?: TicketProduct[];
+  [key: string]: unknown;
+}
 
-/** Ticket shape from GET /api/tickets/by-order/:order_id */
+export type VerificationStatus = 'verified' | 'not_found' | 'offline' | 'error' | 'unauthorized';
+
 export interface APITicketDetails {
   load: string;
   ticket_code: string;
@@ -73,7 +137,6 @@ export interface APITicketDetails {
     to_plant: string | null;
     at_plant: string | null;
   };
-  // Order-level info (merged from parent response)
   order_code?: string;
   order_date?: string;
   customer_name?: string;
@@ -85,7 +148,6 @@ export interface APITicketDetails {
   [key: string]: unknown;
 }
 
-/** Truck shape from GET /api/trucks */
 export interface APITruckDetails {
   truck_id: number;
   code: string;
@@ -113,8 +175,6 @@ export interface APITruckDetails {
 
 export type APIDetails = APITicketDetails | APITruckDetails;
 
-// ── Core types ──
-
 export interface ScanRecord {
   id: string;
   data: string;
@@ -123,6 +183,8 @@ export interface ScanRecord {
   label?: string;
   tkData?: TKQRData;
   apiData?: APIDetails;
+  fullTicket?: FullTicket;
+  orderCode?: string;
   verified?: VerificationStatus;
 }
 
@@ -130,8 +192,6 @@ export type RootTabParamList = {
   Scanner: undefined;
   History: undefined;
 };
-
-// ── Auth types ──
 
 export interface LoginResponse {
   code: string;
@@ -148,6 +208,8 @@ export interface User {
   email: string;
   phone: string;
   role: string;
+  userType?: string;
+  userRole?: string;
   metadata?: {
     full_name?: string;
     user_role?: string;
@@ -163,8 +225,6 @@ export interface User {
     [key: string]: unknown;
   };
 }
-
-// ── Navigation ──
 
 export type RootStackParamList = {
   Login: undefined;

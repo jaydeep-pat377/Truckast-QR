@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,15 +13,15 @@ import {
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import ReactNativeBlobUtil from 'react-native-blob-util';
-import {useRoute, useNavigation, RouteProp} from '@react-navigation/native';
-import {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 import MCIcon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {useAppTheme} from '../contexts/ThemeContext';
-import {useAuth} from '../contexts/AuthContext';
-import {useAlert} from '../contexts/AlertContext';
-import {deleteScanRecord} from '../storage/scanHistory';
-import {generateTicketPdf} from '../utils/ticketPdf';
+import { useAppTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useAlert } from '../contexts/AlertContext';
+import { deleteScanRecord } from '../storage/scanHistory';
+import { generateTicketPdf } from '../utils/ticketPdf';
 import {
   RootStackParamList,
   TKTicketData,
@@ -35,16 +35,15 @@ type ThemeType = ReturnType<typeof import('../contexts/ThemeContext').useAppThem
 
 const ScanDetailsScreen: React.FC = () => {
   const theme = useAppTheme();
-  const {backendUrl, getAccessToken} = useAuth();
-  const {showAlert} = useAlert();
+  const { backendUrl, getAccessToken } = useAuth();
+  const { showAlert } = useAlert();
   const route = useRoute<RouteProps>();
   const navigation = useNavigation<NavigationProp>();
-  const {scan} = route.params;
+  const { scan } = route.params;
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  // Entry animation
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(18)).current;
   const toastAnim = useRef(new Animated.Value(0)).current;
@@ -64,7 +63,6 @@ const ScanDetailsScreen: React.FC = () => {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
-  // ── Data type detection ──
   const dataType = useMemo(() => {
     const data = scan.data;
     if (/^https?:\/\//i.test(data)) {
@@ -168,7 +166,6 @@ const ScanDetailsScreen: React.FC = () => {
     return labels[type] || 'Barcode';
   };
 
-  // ── Toast ──
   const showToast = useCallback(
     (message: string) => {
       setToastMessage(message);
@@ -191,7 +188,6 @@ const ScanDetailsScreen: React.FC = () => {
     [toastAnim],
   );
 
-  // ── Handlers ──
   const handleCopy = useCallback(() => {
     Clipboard.setString(scan.data);
     showToast('Copied to clipboard');
@@ -199,7 +195,7 @@ const ScanDetailsScreen: React.FC = () => {
 
   const handleShare = useCallback(async () => {
     try {
-      await Share.share({message: scan.data});
+      await Share.share({ message: scan.data });
     } catch (error) {
       console.log('Error sharing:', error);
     }
@@ -233,7 +229,7 @@ const ScanDetailsScreen: React.FC = () => {
       title: 'Delete Scan',
       message: 'Are you sure you want to delete this scan?',
       buttons: [
-        {text: 'Cancel', style: 'cancel'},
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
@@ -254,12 +250,11 @@ const ScanDetailsScreen: React.FC = () => {
 
     setDownloading(true);
     try {
-      const filePath = await generateTicketPdf(scan);
+      const filePath = await generateTicketPdf(scan, backendUrl);
 
-      // Copy to Downloads on Android
       if (Platform.OS === 'android') {
         const ticketCode = (scan.tkData as TKTicketData).ticketCode || 'ticket';
-        const destPath = `${ReactNativeBlobUtil.fs.dirs.DownloadDir}/Ticket-${ticketCode}.pdf`;
+        const destPath = `${ReactNativeBlobUtil.fs.dirs.DownloadDir}/ticket-${ticketCode}.pdf`;
         await ReactNativeBlobUtil.fs.cp(filePath, destPath);
 
         ReactNativeBlobUtil.android.addCompleteDownload({
@@ -273,7 +268,6 @@ const ScanDetailsScreen: React.FC = () => {
 
       showToast('PDF saved to Downloads');
     } catch (err) {
-      console.error('[PDF] Error:', err);
       showAlert({
         type: 'error',
         title: 'Download Failed',
@@ -282,7 +276,7 @@ const ScanDetailsScreen: React.FC = () => {
     } finally {
       setDownloading(false);
     }
-  }, [scan, showToast, showAlert]);
+  }, [scan, backendUrl, showToast, showAlert]);
 
   const canOpenLink =
     dataType === 'url' ||
@@ -319,77 +313,33 @@ const ScanDetailsScreen: React.FC = () => {
     });
   };
 
-  // ── Verification badge helper ──
   const verificationBadge = () => {
     if (verified === 'verified') {
-      return {label: 'Verified', color: theme.colors.success.main, bg: theme.colors.success.background};
+      return { label: 'Verified', color: theme.colors.success.main, bg: theme.colors.success.background };
     }
     if (verified === 'offline') {
-      return {label: 'Offline — Local Data', color: theme.colors.warning.main, bg: theme.colors.warning.background};
+      return { label: 'Offline — Local Data', color: theme.colors.warning.main, bg: theme.colors.warning.background };
     }
-    // Fallback for old records without verification
-    return {label: 'Unverified', color: theme.colors.textSecondary, bg: theme.colors.surface};
+    return { label: 'Unverified', color: theme.colors.textSecondary, bg: theme.colors.surface };
   };
 
-  // ── TK QR Detail View ──
   if (tkData) {
     const badge = verificationBadge();
     const ticketLocal = tkData as TKTicketData;
 
-    console.log('[SCAN-DETAILS] ── Scan Record ──');
-    console.log('[SCAN-DETAILS]   ID:', scan.id);
-    console.log('[SCAN-DETAILS]   Type:', scan.type);
-    console.log('[SCAN-DETAILS]   Verified:', verified);
-    console.log('[SCAN-DETAILS]   isTicket:', isTicket, '| isTruck:', isTruck);
-    console.log('[SCAN-DETAILS] ── TK Data ──');
-    console.log('[SCAN-DETAILS]   Kind:', tkData.kind);
-    console.log('[SCAN-DETAILS]   Ticket #:', (tkData as any).ticketCode);
-    console.log('[SCAN-DETAILS]   Order #:', (tkData as any).orderCode);
-    console.log('[SCAN-DETAILS]   Order ID:', (tkData as any).orderId);
-    console.log('[SCAN-DETAILS]   Truck #:', tkData.truckCode);
-    console.log('[SCAN-DETAILS]   Tenant:', tkData.tenantName);
-    console.log('[SCAN-DETAILS]   IAT:', tkData.iat ? new Date(tkData.iat).toISOString() : 'N/A');
-    console.log('[SCAN-DETAILS] ── API Data ──');
-    console.log('[SCAN-DETAILS]   Has apiData:', !!apiData);
-    console.log('[SCAN-DETAILS]   Has apiTicket:', !!apiTicket);
-    console.log('[SCAN-DETAILS]   Has apiTruck:', !!apiTruck);
     if (apiTicket) {
-      console.log('[SCAN-DETAILS]   Ticket Code:', apiTicket.ticket_code);
-      console.log('[SCAN-DETAILS]   Order Code:', apiTicket.order_code);
-      console.log('[SCAN-DETAILS]   Order Date:', apiTicket.order_date);
-      console.log('[SCAN-DETAILS]   Truck Code:', apiTicket.truck?.truck_code);
-      console.log('[SCAN-DETAILS]   Truck Desc:', apiTicket.truck?.truck_description);
-      console.log('[SCAN-DETAILS]   Driver:', apiTicket.driver_name);
-      console.log('[SCAN-DETAILS]   Plant:', apiTicket.plant_name);
-      console.log('[SCAN-DETAILS]   Status:', apiTicket.status_display);
-      console.log('[SCAN-DETAILS]   Load #:', apiTicket.load);
-      console.log('[SCAN-DETAILS]   Product:', apiTicket.product);
-      console.log('[SCAN-DETAILS]   Load Qty:', apiTicket.load_qty);
-      console.log('[SCAN-DETAILS]   Running/Ordered:', apiTicket.run_qty_ord_qty);
-      console.log('[SCAN-DETAILS]   Progress:', apiTicket.progress_display);
-      console.log('[SCAN-DETAILS]   Customer:', apiTicket.customer_name);
-      console.log('[SCAN-DETAILS]   Project:', apiTicket.project_name);
-      console.log('[SCAN-DETAILS]   Delivery:', apiTicket.delivery_address);
-      console.log('[SCAN-DETAILS]   Timestamps:', JSON.stringify(apiTicket.timestamps));
+      console.log('[SCAN-DETAILS]   Ticket Code:', apiTicket);
     }
     if (apiTruck) {
-      console.log('[SCAN-DETAILS]   Truck Code:', apiTruck.code);
-      console.log('[SCAN-DETAILS]   Description:', apiTruck.description);
-      console.log('[SCAN-DETAILS]   Driver:', apiTruck.current_driver_name);
-      console.log('[SCAN-DETAILS]   Status:', apiTruck.ticket_status);
-      console.log('[SCAN-DETAILS]   Order:', apiTruck.order_code);
-      console.log('[SCAN-DETAILS]   Customer:', apiTruck.customer_name);
-      console.log('[SCAN-DETAILS]   Delivery:', apiTruck.delivery_address);
-      console.log('[SCAN-DETAILS]   Plant:', apiTruck.plant_name);
+      console.log('[SCAN-DETAILS]   Truck Code:', apiTruck);
     }
 
     return (
       <View style={styles.container}>
         <Animated.ScrollView
-          style={{opacity: fadeAnim, transform: [{translateY: slideAnim}]}}
+          style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
-          {/* Hero */}
           <View style={styles.hero}>
             <View
               style={[
@@ -402,14 +352,13 @@ const ScanDetailsScreen: React.FC = () => {
             <Text style={styles.heroLabel}>
               {isTicket ? 'Ticket' : 'Truck'}
             </Text>
-            <View style={[styles.verificationBadge, {backgroundColor: badge.bg}]}>
-              <Text style={[styles.verificationBadgeText, {color: badge.color}]}>
+            <View style={[styles.verificationBadge, { backgroundColor: badge.bg }]}>
+              <Text style={[styles.verificationBadgeText, { color: badge.color }]}>
                 {badge.label}
               </Text>
             </View>
           </View>
 
-          {/* Tenant info */}
           <View style={styles.contentCard}>
             <View
               style={[styles.contentCardAccent, styles.tkTenantAccent]}
@@ -423,10 +372,8 @@ const ScanDetailsScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Ticket-specific fields — prefer API data, fall back to QR data */}
           {isTicket && (
             <>
-              {/* Ticket Info */}
               <View style={styles.card}>
                 <Text style={styles.cardSectionTitle}>TICKET INFORMATION</Text>
                 <View style={styles.infoRow}>
@@ -502,7 +449,6 @@ const ScanDetailsScreen: React.FC = () => {
                 )}
               </View>
 
-              {/* Product & Quantity */}
               {(apiTicket?.product || apiTicket?.load_qty || apiTicket?.progress_display) && (
                 <View style={styles.card}>
                   <Text style={styles.cardSectionTitle}>PRODUCT & QUANTITY</Text>
@@ -542,7 +488,6 @@ const ScanDetailsScreen: React.FC = () => {
                 </View>
               )}
 
-              {/* Customer & Delivery */}
               {(apiTicket?.customer_name || apiTicket?.delivery_address) && (
                 <View style={styles.card}>
                   <Text style={styles.cardSectionTitle}>CUSTOMER & DELIVERY</Text>
@@ -573,7 +518,6 @@ const ScanDetailsScreen: React.FC = () => {
                 </View>
               )}
 
-              {/* Timeline */}
               {apiTicket?.timestamps && (
                 <View style={styles.card}>
                   <Text style={styles.cardSectionTitle}>TIMELINE</Text>
@@ -667,7 +611,6 @@ const ScanDetailsScreen: React.FC = () => {
                 </View>
               )}
 
-              {/* Scan Info */}
               <View style={styles.card}>
                 <Text style={styles.cardSectionTitle}>SCAN INFORMATION</Text>
                 <View style={styles.infoRow}>
@@ -687,7 +630,6 @@ const ScanDetailsScreen: React.FC = () => {
             </>
           )}
 
-          {/* Truck-specific fields */}
           {isTruck && (
             <View style={styles.card}>
               <View style={styles.infoRow}>
@@ -783,7 +725,6 @@ const ScanDetailsScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Actions */}
           <View style={styles.actionsContainer}>
             {isTicket && (
               <TouchableOpacity
@@ -795,7 +736,7 @@ const ScanDetailsScreen: React.FC = () => {
                   <ActivityIndicator
                     size="small"
                     color={theme.colors.primary.contrast}
-                    style={{marginRight: theme.spacing.xs}}
+                    style={{ marginRight: theme.spacing.xs }}
                   />
                 ) : (
                   <Icon name="download-outline" size={18} color={theme.colors.primary.contrast} style={styles.actionIcon} />
@@ -836,7 +777,7 @@ const ScanDetailsScreen: React.FC = () => {
               styles.toast,
               {
                 opacity: toastAnim,
-                transform: [{translateY: toastTranslateY}],
+                transform: [{ translateY: toastTranslateY }],
               },
             ]}
             pointerEvents="none">
@@ -847,14 +788,12 @@ const ScanDetailsScreen: React.FC = () => {
     );
   }
 
-  // ── Generic QR Detail View (non-TK) ──
   return (
     <View style={styles.container}>
       <Animated.ScrollView
-        style={{opacity: fadeAnim, transform: [{translateY: slideAnim}]}}
+        style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
-        {/* ── Hero ── */}
         <View style={styles.hero}>
           <View style={styles.heroIconCircle}>
             <Icon name={dataTypeIconName} size={40} color={theme.colors.primary.main} />
@@ -867,7 +806,6 @@ const ScanDetailsScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* ── Content card with accent ── */}
         <View style={styles.contentCard}>
           <View style={styles.contentCardAccent} />
           <View style={styles.contentCardInner}>
@@ -876,7 +814,7 @@ const ScanDetailsScreen: React.FC = () => {
               <TouchableOpacity
                 onPress={handleCopy}
                 activeOpacity={0.5}
-                hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Icon name="copy-outline" size={18} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -886,7 +824,6 @@ const ScanDetailsScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* ── Details card ── */}
         <View style={styles.card}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Format</Text>
@@ -911,7 +848,6 @@ const ScanDetailsScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* ── Actions ── */}
         <View style={styles.actionsContainer}>
           {canOpenLink && (
             <TouchableOpacity
@@ -970,12 +906,11 @@ const ScanDetailsScreen: React.FC = () => {
         </View>
       </Animated.ScrollView>
 
-      {/* ── Toast notification ── */}
       {toastVisible && (
         <Animated.View
           style={[
             styles.toast,
-            {opacity: toastAnim, transform: [{translateY: toastTranslateY}]},
+            { opacity: toastAnim, transform: [{ translateY: toastTranslateY }] },
           ]}
           pointerEvents="none">
           <Text style={styles.toastText}><Icon name="checkmark-circle" size={14} color={theme.colors.common.white} /> {toastMessage}</Text>
@@ -985,7 +920,6 @@ const ScanDetailsScreen: React.FC = () => {
   );
 };
 
-// ── Styles ────────────────────────────────────────────────
 const createStyles = (theme: ThemeType) =>
   StyleSheet.create({
     container: {
@@ -997,8 +931,6 @@ const createStyles = (theme: ThemeType) =>
       paddingTop: theme.spacing.xl,
       paddingBottom: theme.spacing['5xl'],
     },
-
-    // Hero
     hero: {
       alignItems: 'center',
       marginBottom: theme.spacing.xl,
@@ -1031,8 +963,6 @@ const createStyles = (theme: ThemeType) =>
       color: theme.colors.primary.main,
       fontWeight: theme.fontWeight.medium,
     },
-
-    // Content card with accent bar
     contentCard: {
       flexDirection: 'row',
       backgroundColor: theme.colors.surface,
@@ -1067,8 +997,6 @@ const createStyles = (theme: ThemeType) =>
       color: theme.colors.text,
       lineHeight: 24,
     },
-
-    // Info card
     card: {
       backgroundColor: theme.colors.surface,
       borderRadius: theme.borderRadius.lg,
@@ -1104,8 +1032,6 @@ const createStyles = (theme: ThemeType) =>
       height: StyleSheet.hairlineWidth,
       backgroundColor: theme.colors.border,
     },
-
-    // Actions
     actionsContainer: {
       marginTop: theme.spacing.sm,
     },
@@ -1154,8 +1080,6 @@ const createStyles = (theme: ThemeType) =>
       ...theme.typography.button,
       color: theme.colors.error.main,
     },
-
-    // Verification badge
     verificationBadge: {
       borderRadius: theme.borderRadius.full,
       paddingHorizontal: theme.spacing.md,
@@ -1165,8 +1089,6 @@ const createStyles = (theme: ThemeType) =>
       ...theme.typography.caption,
       fontWeight: theme.fontWeight.semiBold,
     },
-
-    // TK QR specific
     tkTicketHero: {
       backgroundColor: theme.colors.primaryTint,
     },
@@ -1186,8 +1108,6 @@ const createStyles = (theme: ThemeType) =>
       color: theme.colors.textSecondary,
       marginTop: theme.spacing.xxs,
     },
-
-    // Toast
     toast: {
       position: 'absolute',
       top: theme.spacing.md,

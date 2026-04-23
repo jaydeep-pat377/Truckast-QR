@@ -31,15 +31,9 @@ async function authRequest<T>(
   if (!isOnline) {
     throw new AuthError('No internet connection', 0);
   }
-
   const url = `${AUTH_BASE_URL}${path}`;
 
-  // Log request details
-  console.log(`[AUTH] ➡️ ${method} ${path}`);
-  console.log(`[AUTH]    Base URL: ${AUTH_BASE_URL}`);
-  console.log(`[AUTH]    Full URL: ${url}`);
   if (body) {
-    // Mask password in logs
     const safeBody = {...body};
     if ('password' in safeBody) {
       safeBody.password = '***';
@@ -50,10 +44,7 @@ async function authRequest<T>(
     if ('refreshToken' in safeBody) {
       safeBody.refreshToken = '***' + String(safeBody.refreshToken).slice(-6);
     }
-    console.log(`[AUTH]    Body:`, JSON.stringify(safeBody));
   }
-  console.log(`[AUTH]    Auth: ${token ? 'Bearer ***' + token.slice(-6) : 'none'}`);
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -88,22 +79,16 @@ async function authRequest<T>(
           message = text;
         }
       }
-      console.log(`[AUTH] ❌ ${method} ${path} → ${response.status} (${elapsed}ms)`);
-      console.log(`[AUTH]    Error: ${message}`);
       throw new AuthError(message, response.status);
     }
 
     const data = (await response.json()) as T;
     const responsePreview = JSON.stringify(data).substring(0, 300);
-    console.log(`[AUTH] ✅ ${method} ${path} → ${response.status} (${elapsed}ms)`);
-    console.log(`[AUTH]    Response: ${responsePreview}`);
     return data;
   } catch (err) {
     if (err instanceof AuthError) {
       throw err;
     }
-    console.log(`[AUTH] ❌ ${method} ${path} → Network Error`);
-    console.log(`[AUTH]    Error: ${err instanceof Error ? err.message : err}`);
     throw new AuthError(
       err instanceof Error ? err.message : 'Network request failed',
       0,
@@ -113,7 +98,6 @@ async function authRequest<T>(
   }
 }
 
-/** Step 1: Login with email/password — returns code + client_secret */
 export async function login(
   email: string,
   password: string,
@@ -127,13 +111,12 @@ export async function login(
   return response.data;
 }
 
-/** Step 2: Exchange code + client_secret for access/refresh tokens + user */
 export async function exchangeCode(
   code: string,
   clientSecret: string,
 ): Promise<{tokens: AuthTokens; user: User}> {
   const deviceInfo = {
-    device_token: 'mobile-app-token', // TODO: Use FCM/APNs token in production
+    device_token: 'mobile-app-token',
     device_type: Platform.OS,
     device_name: `${Platform.OS === 'ios' ? 'iPhone' : 'Android'} Device`,
   };
@@ -158,7 +141,6 @@ export async function exchangeCode(
   };
 }
 
-/** Refresh the access token using the refresh token */
 export async function refreshAccessToken(
   refreshToken: string,
 ): Promise<AuthTokens> {
@@ -171,7 +153,6 @@ export async function refreshAccessToken(
   return response.data;
 }
 
-/** Get the current authenticated user's profile */
 export async function getMe(accessToken: string): Promise<User> {
   const response = await authRequest<{
     success: boolean;
@@ -183,24 +164,19 @@ export async function getMe(accessToken: string): Promise<User> {
   return response.data.user;
 }
 
-/** Logout and invalidate the session */
 export async function logoutApi(accessToken: string): Promise<void> {
   await authRequest('/api/auth/logout', {
     token: accessToken,
   });
 }
 
-/** Request a password reset email */
 export async function forgotPassword(email: string): Promise<void> {
   await authRequest('/api/auth/forgot-password', {
     body: {email},
   });
 }
 
-// ── Token persistence ──
-
 export async function saveTokens(tokens: AuthTokens): Promise<void> {
-  // TODO: Use react-native-keychain or expo-secure-store for production
   await AsyncStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
 }
 
