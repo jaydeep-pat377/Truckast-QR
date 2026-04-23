@@ -47,6 +47,7 @@ export interface TicketProduct {
   order_qty_unit?: string | null;
   load_qty?: number | null;
   acc_delv_qty?: number | null;
+  slump?: number | null;
 }
 
 export interface FullTicket {
@@ -145,6 +146,13 @@ export interface APITicketDetails {
   driver_name?: string;
   plant_name?: string;
   progress_display?: string;
+  ordered_by_name?: string;
+  ordered_by_phone?: string;
+  purchase_order?: string;
+  customer_job?: string;
+  ticket_products?: TicketProduct[];
+  slump?: string | null;
+  plant_address?: string | null;
   [key: string]: unknown;
 }
 

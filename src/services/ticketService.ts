@@ -60,6 +60,8 @@ interface QrVerifyResponse {
         customer_name: string;
         project_name?: string;
         delivery_address?: string;
+        ordered_by_name?: string | null;
+        ordered_by_phone?: string | null;
       };
       summary?: {
         total_tickets: number;
@@ -210,6 +212,13 @@ async function tryDecryptEndpoint(
         delivery_address: deliveryAddr || undefined,
         driver_name: ticket.driver_name ?? undefined,
         plant_name: ticket.plant_name ?? undefined,
+        ordered_by_name: ticket.ordered_by_name ?? undefined,
+        ordered_by_phone: ticket.ordered_by_phone ?? undefined,
+        purchase_order: ticket.purchase_order ?? undefined,
+        customer_job: ticket.customer_job ?? undefined,
+        ticket_products: ticket.ticket_products ?? undefined,
+        slump: ticket.slump ?? undefined,
+        plant_address: ticket.plant_address ?? undefined,
       };
 
       return {
@@ -283,13 +292,17 @@ async function tryVerifyEndpoint(
       }
 
       if (kind === 'ticket' && details.ticket) {
+        const t = details.ticket;
+        const o = details.order;
         const enrichedTicket: APITicketDetails = {
-          ...details.ticket,
-          order_code: details.order?.order_code,
-          order_date: details.order?.order_date ?? undefined,
-          customer_name: details.order?.customer_name,
-          project_name: details.order?.project_name,
-          delivery_address: details.order?.delivery_address,
+          ...t,
+          order_code: o?.order_code ?? t.order_code,
+          order_date: o?.order_date ?? t.order_date ?? undefined,
+          customer_name: o?.customer_name ?? t.customer_name,
+          project_name: o?.project_name ?? t.project_name,
+          delivery_address: o?.delivery_address ?? t.delivery_address,
+          ordered_by_name: t.ordered_by_name ?? o?.ordered_by_name ?? undefined,
+          ordered_by_phone: t.ordered_by_phone ?? o?.ordered_by_phone ?? undefined,
           progress_display: details.summary?.progress_display,
         };
         return { status: 'verified', qrData, apiData: enrichedTicket };

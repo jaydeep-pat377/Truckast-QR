@@ -244,6 +244,9 @@ const QRScannerScreen: React.FC = () => {
           setFeedbackState('processing');
 
           const token = await getAccessToken();
+          console.log('[DEBUG-TEST] TOKEN:', token);
+          console.log('[DEBUG-TEST] QR_PAYLOAD:', data);
+          console.log('[DEBUG-TEST] BACKEND_URL:', backendUrl);
           const result = await verifyQRPayload(data, token, backendUrl, user?.userRole);
 
           if (result.status === 'unauthorized') {

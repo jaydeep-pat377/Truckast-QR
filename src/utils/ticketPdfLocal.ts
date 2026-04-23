@@ -30,8 +30,18 @@ function fmtTime(v: string | null | undefined): string {
     const match = s.match(/[T ](\d{2}):(\d{2})/);
     if (match) return `${match[1]}:${match[2]}`;
     // Handle bare time "HH:MM" or "HH:MM:SS"
-    const bareMatch = s.match(/^(\d{2}):(\d{2})/);
-    if (bareMatch) return `${bareMatch[1]}:${bareMatch[2]}`;
+    const bareMatch = s.match(/^(\d{1,2}):(\d{2})/);
+    if (bareMatch) {
+      let h = parseInt(bareMatch[1], 10);
+      const m = bareMatch[2];
+      const ampm = s.match(/\s*(AM|PM)$/i);
+      if (ampm) {
+        const isPM = ampm[1].toUpperCase() === 'PM';
+        if (isPM && h < 12) h += 12;
+        if (!isPM && h === 12) h = 0;
+      }
+      return `${String(h).padStart(2, '0')}:${m}`;
+    }
     return '';
   } catch {
     return '';
@@ -87,17 +97,23 @@ function buildFullTicketFromApi(
     if (m) qtyUnit = m[1];
   }
 
-  const product: TicketProduct | undefined = (apiData.product || loadQty != null) ? {
-    id: 0,
-    ticket_id: 0,
-    item_code: null,
-    description: apiData.product || null,
-    is_mix: true,
-    load_qty: loadQty,
-    order_qty: apiData.ordered_qty || null,
-    ticket_qty_unit: qtyUnit || null,
-    order_qty_unit: qtyUnit || null,
-  } : undefined;
+  // Use full products array from API if available, otherwise build single product
+  let products: TicketProduct[] | undefined;
+  if (apiData.ticket_products && apiData.ticket_products.length > 0) {
+    products = apiData.ticket_products;
+  } else if (apiData.product || loadQty != null) {
+    products = [{
+      id: 0,
+      ticket_id: 0,
+      item_code: null,
+      description: apiData.product || null,
+      is_mix: true,
+      load_qty: loadQty,
+      order_qty: apiData.ordered_qty || null,
+      ticket_qty_unit: qtyUnit || null,
+      order_qty_unit: qtyUnit || null,
+    }];
+  }
 
   return {
     ticket_id: 0,
@@ -111,9 +127,18 @@ function buildFullTicketFromApi(
     delivery_addr3: null,
     plant_code: null,
     plant_name: apiData.plant_name || null,
+    plant_address: apiData.plant_address || null,
+    slump: apiData.slump
+      || (apiData.ticket_products?.find(p => p.is_mix)?.slump != null
+        ? String(apiData.ticket_products.find(p => p.is_mix)!.slump)
+        : null),
     truck_code: apiData.truck?.truck_code || tkData?.truckCode || null,
     driver_name: apiData.driver_name || null,
     project_name: apiData.project_name || null,
+    ordered_by_name: apiData.ordered_by_name || null,
+    ordered_by_phone: apiData.ordered_by_phone || null,
+    purchase_order: apiData.purchase_order || null,
+    customer_job: apiData.customer_job || null,
     amount: null,
     scheduled_on_job_time: null,
     printed_time: apiData.timestamps?.ticketed || null,
@@ -129,7 +154,7 @@ function buildFullTicketFromApi(
     print_mix_weight: null,
     remove_reason_code: apiData.remove_reason_code || null,
     current_status: apiData.status_display || apiData.status || '',
-    ticket_products: product ? [product] : undefined,
+    ticket_products: products,
   };
 }
 
