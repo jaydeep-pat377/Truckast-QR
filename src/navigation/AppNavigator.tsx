@@ -1,5 +1,8 @@
 import React from 'react';
-import {createNativeStackNavigator} from '@react-navigation/native-stack';
+import {View, Text, StyleSheet, Pressable, StatusBar} from 'react-native';
+import {createNativeStackNavigator, NativeStackHeaderProps} from '@react-navigation/native-stack';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/Ionicons';
 import {useAppTheme} from '../contexts/ThemeContext';
 import {useAuth} from '../contexts/AuthContext';
 import {RootStackParamList} from '../types';
@@ -11,29 +14,77 @@ import SettingsScreen from '../screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+function CustomHeader({navigation, options}: NativeStackHeaderProps) {
+  const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const canGoBack = navigation.canGoBack();
+  const title = typeof options.title === 'string' ? options.title : '';
+
+  return (
+    <View style={[hStyles.container, {backgroundColor: theme.colors.primary.main, paddingTop: insets.top}]}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary.main} translucent />
+      <View style={hStyles.content}>
+        {canGoBack ? (
+          <Pressable
+            onPress={() => navigation.goBack()}
+            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+            style={({pressed}) => [hStyles.backButton, {opacity: pressed ? 0.6 : 1}]}>
+            <Icon name="arrow-back" size={24} color={theme.colors.primary.contrast} />
+          </Pressable>
+        ) : (
+          <View style={hStyles.backPlaceholder} />
+        )}
+        <Text
+          style={[hStyles.title, theme.typography.h4, {color: theme.colors.primary.contrast}]}
+          numberOfLines={1}>
+          {title}
+        </Text>
+        <View style={hStyles.backPlaceholder} />
+      </View>
+    </View>
+  );
+}
+
+const hStyles = StyleSheet.create({
+  container: {
+    width: '100%',
+  },
+  content: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  backButton: {
+    width: 48,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backPlaceholder: {
+    width: 48,
+  },
+  title: {
+    flex: 1,
+    textAlign: 'center',
+  },
+});
+
 const AppNavigator: React.FC = () => {
   const theme = useAppTheme();
   const {isAuthenticated, isLoading} = useAuth();
 
   if (isLoading) {
-    return null; // Splash screen is still showing
+    return null;
   }
 
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.primary.main,
-        },
-        headerTintColor: theme.colors.primary.contrast,
-        headerTitleStyle: {
-          ...theme.typography.h4,
-          color: theme.colors.primary.contrast,
-        },
-        headerShadowVisible: false,
         contentStyle: {
           backgroundColor: theme.colors.background,
         },
+        header: (props) => <CustomHeader {...props} />,
       }}>
       {!isAuthenticated ? (
         <Stack.Screen
@@ -67,7 +118,7 @@ const AppNavigator: React.FC = () => {
                   title = `Truck ${code}`;
                 }
               }
-              return {title, headerBackTitle: 'Back'};
+              return {title};
             }}
           />
           <Stack.Screen
@@ -75,7 +126,6 @@ const AppNavigator: React.FC = () => {
             component={HistoryScreen}
             options={{
               title: 'Scan History',
-              headerBackTitle: 'Scanner',
             }}
           />
           <Stack.Screen
@@ -83,7 +133,6 @@ const AppNavigator: React.FC = () => {
             component={SettingsScreen}
             options={{
               title: 'Settings',
-              headerBackTitle: 'Back',
             }}
           />
         </>

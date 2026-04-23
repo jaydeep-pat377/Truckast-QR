@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import ReactNativeBlobUtil from 'react-native-blob-util';
+import RNShare from 'react-native-share';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -193,13 +194,53 @@ const ScanDetailsScreen: React.FC = () => {
     showToast('Copied to clipboard');
   }, [scan.data, showToast]);
 
+  const [sharing, setSharing] = useState(false);
+
   const handleShare = useCallback(async () => {
-    try {
-      await Share.share({ message: scan.data });
-    } catch (error) {
-      console.log('Error sharing:', error);
+    const isTicket = scan.tkData?.kind === 'ticket';
+
+    if (!isTicket) {
+      try {
+        await Share.share({ message: scan.data });
+      } catch (error) {
+        console.log('Error sharing:', error);
+      }
+      return;
     }
-  }, [scan.data]);
+
+    setSharing(true);
+    try {
+      const filePath = await generateTicketPdf(scan, backendUrl);
+      const ticketCode = (scan.tkData as TKTicketData).ticketCode || 'ticket';
+      const tenantName = (scan.tkData as TKTicketData).tenantName || '';
+
+      const shareMessage = tenantName
+        ? `Ticket #${ticketCode} \u2014 ${tenantName}`
+        : `Ticket #${ticketCode}`;
+
+      const sharePath = `${ReactNativeBlobUtil.fs.dirs.CacheDir}/ticket-${ticketCode}.pdf`;
+      await ReactNativeBlobUtil.fs.cp(filePath, sharePath);
+
+      await RNShare.open({
+        title: `Share Ticket ${ticketCode}`,
+        message: shareMessage,
+        url: Platform.OS === 'android' ? `file://${sharePath}` : sharePath,
+        type: 'application/pdf',
+        failOnCancel: false,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message?.includes('User did not share')) {
+        return;
+      }
+      showAlert({
+        type: 'error',
+        title: 'Share Failed',
+        message: err instanceof Error ? err.message : 'Could not share PDF',
+      });
+    } finally {
+      setSharing(false);
+    }
+  }, [scan, backendUrl, showAlert]);
 
   const handleOpenLink = useCallback(() => {
     let url = scan.data;
@@ -251,9 +292,9 @@ const ScanDetailsScreen: React.FC = () => {
     setDownloading(true);
     try {
       const filePath = await generateTicketPdf(scan, backendUrl);
+      const ticketCode = (scan.tkData as TKTicketData).ticketCode || 'ticket';
 
       if (Platform.OS === 'android') {
-        const ticketCode = (scan.tkData as TKTicketData).ticketCode || 'ticket';
         const destPath = `${ReactNativeBlobUtil.fs.dirs.DownloadDir}/ticket-${ticketCode}.pdf`;
         await ReactNativeBlobUtil.fs.cp(filePath, destPath);
 
@@ -264,10 +305,21 @@ const ScanDetailsScreen: React.FC = () => {
           path: destPath,
           showNotification: true,
         });
-      }
 
-      showToast('PDF saved to Downloads');
+        showToast('PDF saved to Downloads');
+      } else {
+        // iOS: open share sheet so user can "Save to Files", AirDrop, Print, etc.
+        await RNShare.open({
+          title: `Ticket ${ticketCode}`,
+          url: filePath,
+          type: 'application/pdf',
+          failOnCancel: false,
+        });
+      }
     } catch (err) {
+      if (err instanceof Error && err.message?.includes('User did not share')) {
+        return;
+      }
       showAlert({
         type: 'error',
         title: 'Download Failed',
@@ -755,9 +807,18 @@ const ScanDetailsScreen: React.FC = () => {
                   styles.flex1,
                 ]}
                 onPress={handleShare}
+                disabled={sharing}
                 activeOpacity={0.8}>
-                <Icon name="share-outline" size={18} color={theme.colors.text} style={styles.actionIcon} />
-                <Text style={styles.secondaryActionText}>Share</Text>
+                {sharing ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.text}
+                    style={{ marginRight: theme.spacing.xs }}
+                  />
+                ) : (
+                  <Icon name="share-outline" size={18} color={theme.colors.text} style={styles.actionIcon} />
+                )}
+                <Text style={styles.secondaryActionText}>{sharing ? 'Sharing...' : 'Share'}</Text>
               </TouchableOpacity>
             </View>
 

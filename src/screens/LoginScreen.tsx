@@ -203,7 +203,7 @@ const createStyles = (theme: ThemeType) =>
       borderRadius: theme.borderRadius.md,
       borderWidth: 1,
       borderColor: theme.colors.border,
-      padding: theme.spacing.sm,
+      paddingVertical: 0,
       paddingHorizontal: theme.spacing.md,
       ...theme.typography.body,
       color: theme.colors.text,
@@ -220,7 +220,7 @@ const createStyles = (theme: ThemeType) =>
     },
     passwordInput: {
       flex: 1,
-      padding: theme.spacing.sm,
+      paddingVertical: 0,
       paddingHorizontal: theme.spacing.md,
       ...theme.typography.body,
       color: theme.colors.text,
