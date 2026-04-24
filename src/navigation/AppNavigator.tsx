@@ -11,6 +11,7 @@ import QRScannerScreen from '../screens/QRScannerScreen';
 import ScanDetailsScreen from '../screens/ScanDetailsScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import PdfViewerScreen from '../screens/PdfViewerScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -120,6 +121,13 @@ const AppNavigator: React.FC = () => {
               }
               return {title};
             }}
+          />
+          <Stack.Screen
+            name="PdfViewer"
+            component={PdfViewerScreen}
+            options={({route}) => ({
+              title: route.params?.title || 'View PDF',
+            })}
           />
           <Stack.Screen
             name="History"

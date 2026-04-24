@@ -194,53 +194,13 @@ const ScanDetailsScreen: React.FC = () => {
     showToast('Copied to clipboard');
   }, [scan.data, showToast]);
 
-  const [sharing, setSharing] = useState(false);
-
   const handleShare = useCallback(async () => {
-    const isTicket = scan.tkData?.kind === 'ticket';
-
-    if (!isTicket) {
-      try {
-        await Share.share({ message: scan.data });
-      } catch (error) {
-        console.log('Error sharing:', error);
-      }
-      return;
-    }
-
-    setSharing(true);
     try {
-      const filePath = await generateTicketPdf(scan, backendUrl);
-      const ticketCode = (scan.tkData as TKTicketData).ticketCode || 'ticket';
-      const tenantName = (scan.tkData as TKTicketData).tenantName || '';
-
-      const shareMessage = tenantName
-        ? `Ticket #${ticketCode} \u2014 ${tenantName}`
-        : `Ticket #${ticketCode}`;
-
-      const sharePath = `${ReactNativeBlobUtil.fs.dirs.CacheDir}/ticket-${ticketCode}.pdf`;
-      await ReactNativeBlobUtil.fs.cp(filePath, sharePath);
-
-      await RNShare.open({
-        title: `Share Ticket ${ticketCode}`,
-        message: shareMessage,
-        url: Platform.OS === 'android' ? `file://${sharePath}` : sharePath,
-        type: 'application/pdf',
-        failOnCancel: false,
-      });
-    } catch (err) {
-      if (err instanceof Error && err.message?.includes('User did not share')) {
-        return;
-      }
-      showAlert({
-        type: 'error',
-        title: 'Share Failed',
-        message: err instanceof Error ? err.message : 'Could not share PDF',
-      });
-    } finally {
-      setSharing(false);
+      await Share.share({ message: scan.data });
+    } catch (error) {
+      console.log('Error sharing:', error);
     }
-  }, [scan, backendUrl, showAlert]);
+  }, [scan.data]);
 
   const handleOpenLink = useCallback(() => {
     let url = scan.data;
@@ -284,7 +244,48 @@ const ScanDetailsScreen: React.FC = () => {
     });
   }, [scan.id, navigation, getAccessToken, backendUrl, showAlert]);
 
-  const handleDownloadPdf = useCallback(async () => {
+  const [sharing, setSharing] = useState(false);
+
+  const handleSharePdf = useCallback(async () => {
+    if (!scan.tkData) {
+      return;
+    }
+
+    setSharing(true);
+    try {
+      const filePath = await generateTicketPdf(scan, backendUrl);
+      const ticketCode = (scan.tkData as TKTicketData).ticketCode || 'ticket';
+      const tenantName = (scan.tkData as TKTicketData).tenantName || '';
+
+      const shareMessage = tenantName
+        ? `Ticket #${ticketCode} \u2014 ${tenantName}`
+        : `Ticket #${ticketCode}`;
+
+      const sharePath = `${ReactNativeBlobUtil.fs.dirs.CacheDir}/ticket-${ticketCode}.pdf`;
+      await ReactNativeBlobUtil.fs.cp(filePath, sharePath);
+
+      await RNShare.open({
+        title: `Share Ticket ${ticketCode}`,
+        message: shareMessage,
+        url: Platform.OS === 'android' ? `file://${sharePath}` : sharePath,
+        type: 'application/pdf',
+        failOnCancel: false,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message?.includes('User did not share')) {
+        return;
+      }
+      showAlert({
+        type: 'error',
+        title: 'Share Failed',
+        message: err instanceof Error ? err.message : 'Could not share PDF',
+      });
+    } finally {
+      setSharing(false);
+    }
+  }, [scan, backendUrl, showAlert]);
+
+  const handleViewPdf = useCallback(async () => {
     if (!scan.tkData) {
       return;
     }
@@ -293,42 +294,20 @@ const ScanDetailsScreen: React.FC = () => {
     try {
       const filePath = await generateTicketPdf(scan, backendUrl);
       const ticketCode = (scan.tkData as TKTicketData).ticketCode || 'ticket';
-
-      if (Platform.OS === 'android') {
-        const destPath = `${ReactNativeBlobUtil.fs.dirs.DownloadDir}/ticket-${ticketCode}.pdf`;
-        await ReactNativeBlobUtil.fs.cp(filePath, destPath);
-
-        ReactNativeBlobUtil.android.addCompleteDownload({
-          title: `Ticket ${ticketCode}`,
-          description: 'Ticket PDF downloaded',
-          mime: 'application/pdf',
-          path: destPath,
-          showNotification: true,
-        });
-
-        showToast('PDF saved to Downloads');
-      } else {
-        // iOS: open share sheet so user can "Save to Files", AirDrop, Print, etc.
-        await RNShare.open({
-          title: `Ticket ${ticketCode}`,
-          url: filePath,
-          type: 'application/pdf',
-          failOnCancel: false,
-        });
-      }
+      navigation.navigate('PdfViewer', {
+        filePath,
+        title: `Ticket ${ticketCode}`,
+      });
     } catch (err) {
-      if (err instanceof Error && err.message?.includes('User did not share')) {
-        return;
-      }
       showAlert({
         type: 'error',
-        title: 'Download Failed',
+        title: 'Error',
         message: err instanceof Error ? err.message : 'Could not generate PDF',
       });
     } finally {
       setDownloading(false);
     }
-  }, [scan, backendUrl, showToast, showAlert]);
+  }, [scan, backendUrl, navigation, showAlert]);
 
   const canOpenLink =
     dataType === 'url' ||
@@ -781,7 +760,7 @@ const ScanDetailsScreen: React.FC = () => {
             {isTicket && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.primaryAction]}
-                onPress={handleDownloadPdf}
+                onPress={handleViewPdf}
                 disabled={downloading}
                 activeOpacity={0.8}>
                 {downloading ? (
@@ -791,22 +770,18 @@ const ScanDetailsScreen: React.FC = () => {
                     style={{ marginRight: theme.spacing.xs }}
                   />
                 ) : (
-                  <Icon name="download-outline" size={18} color={theme.colors.primary.contrast} style={styles.actionIcon} />
+                  <Icon name="eye-outline" size={18} color={theme.colors.primary.contrast} style={styles.actionIcon} />
                 )}
                 <Text style={styles.primaryActionText}>
-                  {downloading ? 'Saving...' : 'Download Ticket'}
+                  {downloading ? 'Loading...' : 'View Ticket'}
                 </Text>
               </TouchableOpacity>
             )}
 
-            <View style={styles.actionRow}>
+            {isTicket && (
               <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  styles.secondaryAction,
-                  styles.flex1,
-                ]}
-                onPress={handleShare}
+                style={[styles.actionButton, styles.secondaryAction]}
+                onPress={handleSharePdf}
                 disabled={sharing}
                 activeOpacity={0.8}>
                 {sharing ? (
@@ -818,9 +793,11 @@ const ScanDetailsScreen: React.FC = () => {
                 ) : (
                   <Icon name="share-outline" size={18} color={theme.colors.text} style={styles.actionIcon} />
                 )}
-                <Text style={styles.secondaryActionText}>{sharing ? 'Sharing...' : 'Share'}</Text>
+                <Text style={styles.secondaryActionText}>
+                  {sharing ? 'Sharing...' : 'Share'}
+                </Text>
               </TouchableOpacity>
-            </View>
+            )}
 
             <TouchableOpacity
               style={[styles.actionButton, styles.dangerAction]}

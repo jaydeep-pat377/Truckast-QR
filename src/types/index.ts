@@ -238,6 +238,7 @@ export type RootStackParamList = {
   Login: undefined;
   MainTabs: undefined;
   ScanDetails: {scan: ScanRecord};
+  PdfViewer: {filePath: string; title?: string};
   History: undefined;
   Settings: undefined;
 };
