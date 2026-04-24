@@ -7,6 +7,10 @@ import {useAppTheme} from '../contexts/ThemeContext';
 import {useAuth} from '../contexts/AuthContext';
 import {RootStackParamList} from '../types';
 import LoginScreen from '../screens/LoginScreen';
+
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import RequestQRAccessScreen from '../screens/RequestQRAccessScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
 import ScanDetailsScreen from '../screens/ScanDetailsScreen';
 import HistoryScreen from '../screens/HistoryScreen';
@@ -88,11 +92,23 @@ const AppNavigator: React.FC = () => {
         header: (props) => <CustomHeader {...props} />,
       }}>
       {!isAuthenticated ? (
-        <Stack.Screen
-          name="Login"
-          component={LoginScreen}
-          options={{headerShown: false}}
-        />
+        <>
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{headerShown: false}}
+          />
+          <Stack.Screen
+            name="ForgotPassword"
+            component={ForgotPasswordScreen}
+            options={{headerShown: false}}
+          />
+          <Stack.Screen
+            name="RequestQRAccess"
+            component={RequestQRAccessScreen}
+            options={{headerShown: false}}
+          />
+        </>
       ) : (
         <>
           <Stack.Screen
@@ -141,6 +157,13 @@ const AppNavigator: React.FC = () => {
             component={SettingsScreen}
             options={{
               title: 'Settings',
+            }}
+          />
+          <Stack.Screen
+            name="ChangePassword"
+            component={ChangePasswordScreen}
+            options={{
+              title: 'Change Password',
             }}
           />
         </>

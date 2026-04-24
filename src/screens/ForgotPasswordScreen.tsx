@@ -12,48 +12,48 @@ import {
   ScrollView,
   StatusBar,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
 import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useAppTheme} from '../contexts/ThemeContext';
-import {useAuth} from '../contexts/AuthContext';
+import {forgotPassword} from '../services/authService';
 import {RootStackParamList} from '../types';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const brandLogo = require('../assets/logo.png');
 
 type ThemeType = ReturnType<typeof useAppTheme>;
-
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const LoginScreen: React.FC = () => {
+const ForgotPasswordScreen: React.FC = () => {
   const theme = useAppTheme();
   const navigation = useNavigation<NavigationProp>();
-  const {login} = useAuth();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const handleLogin = useCallback(async () => {
-    if (!email.trim() || !password.trim()) {
-      setError('Please enter email and password');
+  const handleSubmit = useCallback(async () => {
+    if (!email.trim()) {
+      setError('Please enter your email address');
       return;
     }
 
     setError('');
+    setSuccess('');
     setLoading(true);
 
     try {
-      await login(email.trim(), password);
+      await forgotPassword(email.trim());
+      setSuccess(
+        'If an account exists with this email, you will receive a password reset link.',
+      );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Login failed';
+      const msg = err instanceof Error ? err.message : 'Request failed';
       setError(msg);
     } finally {
       setLoading(false);
     }
-  }, [email, password, login]);
+  }, [email]);
 
   const styles = createStyles(theme);
   const primary = theme.colors.primary.main;
@@ -80,11 +80,21 @@ const LoginScreen: React.FC = () => {
 
         {/* Form */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Sign In</Text>
+          <Text style={styles.cardTitle}>Reset Password</Text>
+          <Text style={styles.description}>
+            Enter your email address and we'll send you a link to reset your
+            password.
+          </Text>
 
           {error ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          {success ? (
+            <View style={styles.successBox}>
+              <Text style={styles.successText}>{success}</Text>
             </View>
           ) : null}
 
@@ -99,62 +109,30 @@ const LoginScreen: React.FC = () => {
             autoCapitalize="none"
             autoCorrect={false}
             editable={!loading}
+            onSubmitEditing={handleSubmit}
           />
-
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordContainer}>
-            <TextInput
-              style={styles.passwordInput}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter password"
-              placeholderTextColor={theme.colors.textHint}
-              secureTextEntry={!showPassword}
-              editable={!loading}
-              onSubmitEditing={handleLogin}
-            />
-            <TouchableOpacity
-              style={styles.eyeButton}
-              onPress={() => setShowPassword(prev => !prev)}
-              activeOpacity={0.6}
-              hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-              <Icon
-                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={styles.forgotButton}
-            onPress={() => navigation.navigate('ForgotPassword')}
-            disabled={loading}>
-            <Text style={styles.forgotText}>Forgot password?</Text>
-          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
+            onPress={handleSubmit}
             disabled={loading}
             activeOpacity={0.8}>
             {loading ? (
               <ActivityIndicator color={theme.colors.primary.contrast} />
             ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
+              <Text style={styles.buttonText}>Send Reset Link</Text>
             )}
           </TouchableOpacity>
 
+          <View style={styles.switchRow}>
+            <Text style={styles.switchText}>Remember your password? </Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Login')}
+              disabled={loading}>
+              <Text style={styles.switchLink}>Sign In</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-
-        {/* QR Access Request */}
-        <TouchableOpacity
-          style={styles.qrAccessButton}
-          onPress={() => navigation.navigate('RequestQRAccess')}
-          activeOpacity={0.7}>
-          <Icon name="qr-code-outline" size={20} color={primary} />
-          <Text style={styles.qrAccessText}>Request QR Scanner Access</Text>
-        </TouchableOpacity>
 
         <Text style={styles.footer}>Authorized personnel only</Text>
       </ScrollView>
@@ -203,6 +181,11 @@ const createStyles = (theme: ThemeType) =>
     cardTitle: {
       ...theme.typography.h3,
       color: theme.colors.text,
+      marginBottom: theme.spacing.sm,
+    },
+    description: {
+      ...theme.typography.bodySmall,
+      color: theme.colors.textSecondary,
       marginBottom: theme.spacing.xl,
     },
     errorBox: {
@@ -214,6 +197,16 @@ const createStyles = (theme: ThemeType) =>
     errorText: {
       ...theme.typography.bodySmall,
       color: theme.colors.error.main,
+    },
+    successBox: {
+      backgroundColor: theme.colors.success.background,
+      borderRadius: theme.borderRadius.md,
+      padding: theme.spacing.sm,
+      marginBottom: theme.spacing.md,
+    },
+    successText: {
+      ...theme.typography.bodySmall,
+      color: theme.colors.success.main,
     },
     label: {
       ...theme.typography.label,
@@ -233,39 +226,6 @@ const createStyles = (theme: ThemeType) =>
       color: theme.colors.text,
       height: theme.componentHeight.button,
     },
-    passwordContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: theme.colors.background,
-      borderRadius: theme.borderRadius.md,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      height: theme.componentHeight.button,
-    },
-    passwordInput: {
-      flex: 1,
-      paddingVertical: 0,
-      paddingHorizontal: theme.spacing.md,
-      ...theme.typography.body,
-      lineHeight: undefined,
-      color: theme.colors.text,
-      height: '100%',
-    },
-    eyeButton: {
-      paddingHorizontal: theme.spacing.sm,
-      justifyContent: 'center',
-      alignItems: 'center',
-      height: '100%',
-    },
-    forgotButton: {
-      alignSelf: 'flex-end',
-      marginTop: theme.spacing.sm,
-    },
-    forgotText: {
-      ...theme.typography.bodySmall,
-      color: theme.colors.primary.main,
-      fontWeight: '600',
-    },
     button: {
       backgroundColor: theme.colors.primary.main,
       borderRadius: theme.borderRadius.md,
@@ -281,14 +241,16 @@ const createStyles = (theme: ThemeType) =>
       ...theme.typography.button,
       color: theme.colors.primary.contrast,
     },
-    qrAccessButton: {
+    switchRow: {
       flexDirection: 'row',
-      alignItems: 'center',
       justifyContent: 'center',
-      marginTop: theme.spacing.xl,
-      gap: theme.spacing.xs,
+      marginTop: theme.spacing.lg,
     },
-    qrAccessText: {
+    switchText: {
+      ...theme.typography.bodySmall,
+      color: theme.colors.textSecondary,
+    },
+    switchLink: {
       ...theme.typography.bodySmall,
       color: theme.colors.primary.main,
       fontWeight: '600',
@@ -302,4 +264,4 @@ const createStyles = (theme: ThemeType) =>
     },
   });
 
-export default LoginScreen;
+export default ForgotPasswordScreen;

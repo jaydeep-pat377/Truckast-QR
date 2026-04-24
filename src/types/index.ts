@@ -236,7 +236,10 @@ export interface User {
 
 export type RootStackParamList = {
   Login: undefined;
+  ForgotPassword: undefined;
+  RequestQRAccess: undefined;
   MainTabs: undefined;
+  ChangePassword: undefined;
   ScanDetails: {scan: ScanRecord};
   PdfViewer: {filePath: string; title?: string};
   History: undefined;

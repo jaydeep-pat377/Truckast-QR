@@ -176,6 +176,17 @@ export async function forgotPassword(email: string): Promise<void> {
   });
 }
 
+export async function changePassword(
+  accessToken: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  await authRequest('/api/auth/change-password', {
+    body: {current_password: currentPassword, new_password: newPassword},
+    token: accessToken,
+  });
+}
+
 export async function saveTokens(tokens: AuthTokens): Promise<void> {
   await AsyncStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
 }

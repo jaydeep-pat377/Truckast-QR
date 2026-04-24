@@ -7,10 +7,13 @@ import {
   ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import {useNavigation} from '@react-navigation/native';
+import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useTheme} from '../contexts/ThemeContext';
 import {useAuth} from '../contexts/AuthContext';
 import {useAlert} from '../contexts/AlertContext';
 import {Theme} from '../theme';
+import {RootStackParamList} from '../types';
 
 type ThemeOption = {
   key: 'light' | 'dark' | 'system';
@@ -40,8 +43,11 @@ const THEME_OPTIONS: ThemeOption[] = [
   },
 ];
 
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
 const SettingsScreen: React.FC = () => {
   const {theme, themeMode, setThemeMode} = useTheme();
+  const navigation = useNavigation<NavigationProp>();
   const {logout, user} = useAuth();
   const {showAlert} = useAlert();
   const styles = createStyles(theme);
@@ -137,6 +143,26 @@ const SettingsScreen: React.FC = () => {
                 </React.Fragment>
               );
             })}
+          </View>
+        </View>
+
+        {/* Account section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>ACCOUNT</Text>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => navigation.navigate('ChangePassword')}
+              activeOpacity={0.7}>
+              <Icon name="lock-closed-outline" size={22} color={theme.colors.text} style={styles.optionIcon} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Change Password</Text>
+                <Text style={styles.optionDescription}>
+                  Update your account password
+                </Text>
+              </View>
+              <Icon name="chevron-forward" size={20} color={theme.colors.textHint} />
+            </TouchableOpacity>
           </View>
         </View>
 
