@@ -5,11 +5,17 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {useAppTheme} from '../contexts/ThemeContext';
 import {useAuth} from '../contexts/AuthContext';
+import {SignupProvider} from '../contexts/SignupContext';
 import {RootStackParamList} from '../types';
 import LoginScreen from '../screens/LoginScreen';
 
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import RequestQRAccessScreen from '../screens/RequestQRAccessScreen';
+import OTPVerificationScreen from '../screens/OTPVerificationScreen';
+import PhoneInputScreen from '../screens/PhoneInputScreen';
+import PhoneOTPVerificationScreen from '../screens/PhoneOTPVerificationScreen';
+import SetPasswordScreen from '../screens/SetPasswordScreen';
+import SignupSuccessScreen from '../screens/SignupSuccessScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
 import ScanDetailsScreen from '../screens/ScanDetailsScreen';
@@ -84,91 +90,119 @@ const AppNavigator: React.FC = () => {
   }
 
   return (
-    <Stack.Navigator
-      screenOptions={{
-        contentStyle: {
-          backgroundColor: theme.colors.background,
-        },
-        header: (props) => <CustomHeader {...props} />,
-      }}>
-      {!isAuthenticated ? (
-        <>
-          <Stack.Screen
-            name="Login"
-            component={LoginScreen}
-            options={{headerShown: false}}
-          />
-          <Stack.Screen
-            name="ForgotPassword"
-            component={ForgotPasswordScreen}
-            options={{headerShown: false}}
-          />
-          <Stack.Screen
-            name="RequestQRAccess"
-            component={RequestQRAccessScreen}
-            options={{headerShown: false}}
-          />
-        </>
-      ) : (
-        <>
-          <Stack.Screen
-            name="MainTabs"
-            component={QRScannerScreen}
-            options={{headerShown: false}}
-          />
-          <Stack.Screen
-            name="ScanDetails"
-            component={ScanDetailsScreen}
-            options={({route}) => {
-              const scan = route.params?.scan;
-              const tkData = scan?.tkData;
-              const apiData = scan?.apiData as any;
-              let title = 'Scan Details';
-              if (tkData?.kind === 'ticket') {
-                const code = apiData?.ticket_code || tkData?.ticketCode;
-                if (code) {
-                  title = `Ticket ${code}`;
+    <SignupProvider>
+      <Stack.Navigator
+        screenOptions={{
+          contentStyle: {
+            backgroundColor: theme.colors.background,
+          },
+          header: (props) => <CustomHeader {...props} />,
+          animation: 'slide_from_right',
+        }}>
+        {!isAuthenticated ? (
+          <>
+            <Stack.Screen
+              name="Login"
+              component={LoginScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="ForgotPassword"
+              component={ForgotPasswordScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="RequestQRAccess"
+              component={RequestQRAccessScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="EmailOTPVerification"
+              component={OTPVerificationScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="PhoneInput"
+              component={PhoneInputScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="PhoneOTPVerification"
+              component={PhoneOTPVerificationScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="SetPassword"
+              component={SetPasswordScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="SignupSuccess"
+              component={SignupSuccessScreen}
+              options={{headerShown: false, gestureEnabled: false}}
+            />
+          </>
+        ) : (
+          <>
+            <Stack.Screen
+              name="MainTabs"
+              component={QRScannerScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="ScanDetails"
+              component={ScanDetailsScreen}
+              options={({route}) => {
+                const scan = route.params?.scan;
+                const tkData = scan?.tkData;
+                const apiData = scan?.apiData as any;
+                let title = 'Scan Details';
+                if (tkData?.kind === 'ticket') {
+                  const code = apiData?.ticket_code || tkData?.ticketCode;
+                  if (code) {
+                    title = `Ticket ${code}`;
+                  }
+                } else if (tkData?.kind === 'truck') {
+                  const code = apiData?.code || tkData?.truckCode;
+                  if (code) {
+                    title = `Truck ${code}`;
+                  }
                 }
-              } else if (tkData?.kind === 'truck') {
-                const code = apiData?.code || tkData?.truckCode;
-                if (code) {
-                  title = `Truck ${code}`;
-                }
-              }
-              return {title};
-            }}
-          />
-          <Stack.Screen
-            name="PdfViewer"
-            component={PdfViewerScreen}
-            options={({route}) => ({
-              title: route.params?.title || 'View PDF',
-            })}
-          />
-          <Stack.Screen
-            name="History"
-            component={HistoryScreen}
-            options={{
-              title: 'Scan History',
-            }}
-          />
-          <Stack.Screen
-            name="Settings"
-            component={SettingsScreen}
-            options={{
-              title: 'Settings',
-            }}
-          />
-          <Stack.Screen
-            name="ChangePassword"
-            component={ChangePasswordScreen}
-            options={{
-              title: 'Change Password',
-            }}
-          />
-        </>
-      )}
-    </Stack.Navigator>
+                return {title};
+              }}
+            />
+            <Stack.Screen
+              name="PdfViewer"
+              component={PdfViewerScreen}
+              options={({route}) => ({
+                title: route.params?.title || 'View PDF',
+              })}
+            />
+            <Stack.Screen
+              name="History"
+              component={HistoryScreen}
+              options={{
+                title: 'Scan History',
+              }}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{
+                title: 'Settings',
+              }}
+            />
+            <Stack.Screen
+              name="ChangePassword"
+              component={ChangePasswordScreen}
+              options={{
+                title: 'Change Password',
+              }}
+            />
+          </>
+        )}
+      </Stack.Navigator>
+    </SignupProvider>
   );
 };
 

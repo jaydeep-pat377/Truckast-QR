@@ -6,20 +6,20 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   StatusBar,
-  Keyboard,
   ActivityIndicator,
   type TextInput as TextInputType,
 } from 'react-native';
-import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
-import Icon from 'react-native-vector-icons/Ionicons';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useRoute, RouteProp} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import Icon from 'react-native-vector-icons/Ionicons';
 import {useAppTheme} from '../contexts/ThemeContext';
 import {useSignup} from '../contexts/SignupContext';
 import {RootStackParamList} from '../types';
-import {signup} from '../services/signupService';
+import {setPassword} from '../services/signupService';
 import StepIndicator from '../components/StepIndicator';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -27,116 +27,85 @@ const brandLogo = require('../assets/logo.png');
 
 type ThemeType = ReturnType<typeof useAppTheme>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type SetPasswordRouteProp = RouteProp<RootStackParamList, 'SetPassword'>;
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const RequestQRAccessScreen: React.FC = () => {
+const SetPasswordScreen: React.FC = () => {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
-  const {data, updateData, setStep} = useSignup();
+  const route = useRoute<SetPasswordRouteProp>();
+  const {setStep, step} = useSignup();
+  const {email} = route.params;
 
-  const [firstName, setFirstName] = useState(data.firstName);
-  const [lastName, setLastName] = useState(data.lastName);
-  const [email, setEmail] = useState(data.email);
+  const [password, setPasswordValue] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
 
-  const lastNameRef = useRef<TextInputType>(null);
-  const emailRef = useRef<TextInputType>(null);
+  const confirmRef = useRef<TextInputType>(null);
 
   useEffect(() => {
-    setStep(1);
-  }, [setStep]);
+    if (step < 4) {
+      navigation.navigate('RequestQRAccess');
+    } else {
+      setStep(5);
+    }
+  }, [step, setStep, navigation]);
 
   const validate = useCallback((): boolean => {
     const errors: Record<string, string> = {};
 
-    if (!firstName.trim()) {
-      errors.firstName = 'First name is required';
+    if (!password) {
+      errors.password = 'Password is required';
+    } else if (password.length < 6) {
+      errors.password = 'Password must be at least 6 characters';
     }
-    if (!lastName.trim()) {
-      errors.lastName = 'Last name is required';
-    }
-    if (!email.trim()) {
-      errors.email = 'Email is required';
-    } else if (!EMAIL_REGEX.test(email.trim())) {
-      errors.email = 'Please enter a valid email address';
+
+    if (!confirmPassword) {
+      errors.confirmPassword = 'Please confirm your password';
+    } else if (password !== confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
     }
 
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [firstName, lastName, email]);
+  }, [password, confirmPassword]);
 
   const handleSubmit = useCallback(async () => {
-    Keyboard.dismiss();
     setError('');
-
     if (!validate()) {
       return;
     }
 
     setIsLoading(true);
     try {
-      const result = await signup({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim(),
-      });
-
-      console.log('[CreateAccount] API result:', JSON.stringify(result));
-
-      if (!result.success) {
-        setError(result.message || 'Signup failed');
-        return;
-      }
-
-      updateData({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim(),
-      });
-      setStep(2);
-      navigation.navigate('EmailOTPVerification', {email: email.trim()});
+      await setPassword(email, password, confirmPassword);
+      navigation.navigate('SignupSuccess');
     } catch (err: unknown) {
-      console.log('[CreateAccount] Error:', err);
       const message =
         err instanceof Error ? err.message : 'Something went wrong';
       setError(message);
     } finally {
       setIsLoading(false);
     }
-  }, [firstName, lastName, email, validate, updateData, setStep, navigation]);
+  }, [email, password, confirmPassword, validate, navigation]);
 
   const styles = createStyles(theme);
   const primary = theme.colors.primary.main;
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
       <StatusBar barStyle={theme.isDark ? 'light-content' : 'dark-content'} />
-      {/* Back Arrow */}
-      <TouchableOpacity
-        style={[styles.backButton, {top: insets.top + theme.spacing.xs}]}
-        onPress={() => navigation.goBack()}
-        activeOpacity={0.7}
-        hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-        <Icon name="arrow-back" size={24} color={theme.colors.text} />
-      </TouchableOpacity>
-      <KeyboardAwareScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingTop: insets.top + theme.spacing.lg,
-            paddingBottom: insets.bottom + 20,
-          },
-        ]}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        enableOnAndroid
-        enableAutomaticScroll
-        extraScrollHeight={40}
-        keyboardOpeningTime={0}>
+        bounces={false}>
         {/* Brand */}
         <View style={styles.brandSection}>
           <Image source={brandLogo} style={styles.logo} />
@@ -146,14 +115,12 @@ const RequestQRAccessScreen: React.FC = () => {
           <Text style={styles.subtitle}>Secure Ticket Scanner</Text>
         </View>
 
-        {/* Step Indicator */}
-        <StepIndicator currentStep={1} />
+        <StepIndicator currentStep={5} />
 
-        {/* Form */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Create Account</Text>
+          <Text style={styles.cardTitle}>Set Password</Text>
           <Text style={styles.description}>
-            Enter your details to request QR scanner access.
+            Create a secure password for your account.
           </Text>
 
           {error ? (
@@ -162,76 +129,86 @@ const RequestQRAccessScreen: React.FC = () => {
             </View>
           ) : null}
 
-          <Text style={styles.label}>First Name *</Text>
-          <TextInput
+          <View style={styles.successBadge}>
+            <Text style={styles.successText}>
+              Email & phone verified for {email}
+            </Text>
+          </View>
+
+          <Text style={styles.label}>Password *</Text>
+          <View
             style={[
-              styles.input,
-              fieldErrors.firstName ? styles.inputError : null,
-            ]}
-            value={firstName}
-            onChangeText={t => {
-              setFirstName(t);
-              setFieldErrors(prev => ({...prev, firstName: ''}));
-            }}
-            placeholder="John"
-            placeholderTextColor={theme.colors.textHint}
-            autoCapitalize="words"
-            autoCorrect={false}
-            returnKeyType="next"
-            onSubmitEditing={() => lastNameRef.current?.focus()}
-            editable={!isLoading}
-          />
-          {fieldErrors.firstName ? (
-            <Text style={styles.fieldError}>{fieldErrors.firstName}</Text>
+              styles.passwordContainer,
+              fieldErrors.password ? styles.inputError : null,
+            ]}>
+            <TextInput
+              style={styles.passwordInput}
+              value={password}
+              onChangeText={t => {
+                setPasswordValue(t);
+                setFieldErrors(prev => ({...prev, password: ''}));
+              }}
+              placeholder="Min. 6 characters"
+              placeholderTextColor={theme.colors.textHint}
+              secureTextEntry={!showPassword}
+              returnKeyType="next"
+              onSubmitEditing={() => confirmRef.current?.focus()}
+              editable={!isLoading}
+              autoFocus
+            />
+            <TouchableOpacity
+              style={styles.eyeButton}
+              onPress={() => setShowPassword(prev => !prev)}
+              activeOpacity={0.6}
+              hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+              <Icon
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={theme.colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+          {fieldErrors.password ? (
+            <Text style={styles.fieldError}>{fieldErrors.password}</Text>
           ) : null}
 
-          <Text style={styles.label}>Last Name *</Text>
-          <TextInput
-            ref={lastNameRef}
+          <Text style={styles.label}>Confirm Password *</Text>
+          <View
             style={[
-              styles.input,
-              fieldErrors.lastName ? styles.inputError : null,
-            ]}
-            value={lastName}
-            onChangeText={t => {
-              setLastName(t);
-              setFieldErrors(prev => ({...prev, lastName: ''}));
-            }}
-            placeholder="Doe"
-            placeholderTextColor={theme.colors.textHint}
-            autoCapitalize="words"
-            autoCorrect={false}
-            returnKeyType="next"
-            onSubmitEditing={() => emailRef.current?.focus()}
-            editable={!isLoading}
-          />
-          {fieldErrors.lastName ? (
-            <Text style={styles.fieldError}>{fieldErrors.lastName}</Text>
-          ) : null}
-
-          <Text style={styles.label}>Email *</Text>
-          <TextInput
-            ref={emailRef}
-            style={[
-              styles.input,
-              fieldErrors.email ? styles.inputError : null,
-            ]}
-            value={email}
-            onChangeText={t => {
-              setEmail(t);
-              setFieldErrors(prev => ({...prev, email: ''}));
-            }}
-            placeholder="you@company.com"
-            placeholderTextColor={theme.colors.textHint}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="done"
-            onSubmitEditing={handleSubmit}
-            editable={!isLoading}
-          />
-          {fieldErrors.email ? (
-            <Text style={styles.fieldError}>{fieldErrors.email}</Text>
+              styles.passwordContainer,
+              fieldErrors.confirmPassword ? styles.inputError : null,
+            ]}>
+            <TextInput
+              ref={confirmRef}
+              style={styles.passwordInput}
+              value={confirmPassword}
+              onChangeText={t => {
+                setConfirmPassword(t);
+                setFieldErrors(prev => ({...prev, confirmPassword: ''}));
+              }}
+              placeholder="Re-enter password"
+              placeholderTextColor={theme.colors.textHint}
+              secureTextEntry={!showConfirmPassword}
+              returnKeyType="done"
+              onSubmitEditing={handleSubmit}
+              editable={!isLoading}
+            />
+            <TouchableOpacity
+              style={styles.eyeButton}
+              onPress={() => setShowConfirmPassword(prev => !prev)}
+              activeOpacity={0.6}
+              hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+              <Icon
+                name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={theme.colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+          {fieldErrors.confirmPassword ? (
+            <Text style={styles.fieldError}>
+              {fieldErrors.confirmPassword}
+            </Text>
           ) : null}
 
           <TouchableOpacity
@@ -242,12 +219,12 @@ const RequestQRAccessScreen: React.FC = () => {
             {isLoading ? (
               <ActivityIndicator color={theme.colors.primary.contrast} />
             ) : (
-              <Text style={styles.buttonText}>Continue</Text>
+              <Text style={styles.buttonText}>Complete Signup</Text>
             )}
           </TouchableOpacity>
 
           <View style={styles.switchRow}>
-            <Text style={styles.switchText}>Already have access? </Text>
+            <Text style={styles.switchText}>Back to </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Login')}>
               <Text style={styles.switchLink}>Sign In</Text>
             </TouchableOpacity>
@@ -255,8 +232,8 @@ const RequestQRAccessScreen: React.FC = () => {
         </View>
 
         <Text style={styles.footer}>Authorized personnel only</Text>
-      </KeyboardAwareScrollView>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -266,20 +243,10 @@ const createStyles = (theme: ThemeType) =>
       flex: 1,
       backgroundColor: theme.colors.background,
     },
-    backButton: {
-      position: 'absolute',
-      left: theme.spacing.md,
-      zIndex: 10,
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: theme.colors.surface,
-      justifyContent: 'center',
-      alignItems: 'center',
-      ...theme.shadows.sm,
-    },
     scrollContent: {
-      paddingHorizontal: theme.screenPadding.horizontal,
+      flexGrow: 1,
+      justifyContent: 'center',
+      padding: theme.screenPadding.horizontal,
     },
     brandSection: {
       alignItems: 'center',
@@ -318,6 +285,17 @@ const createStyles = (theme: ThemeType) =>
       color: theme.colors.textSecondary,
       marginBottom: theme.spacing.xl,
     },
+    successBadge: {
+      backgroundColor: theme.colors.success.background,
+      borderRadius: theme.borderRadius.md,
+      padding: theme.spacing.sm,
+      marginBottom: theme.spacing.md,
+    },
+    successText: {
+      ...theme.typography.caption,
+      color: theme.colors.success.main,
+      fontWeight: '600',
+    },
     errorBox: {
       backgroundColor: theme.colors.error.background,
       borderRadius: theme.borderRadius.md,
@@ -334,17 +312,29 @@ const createStyles = (theme: ThemeType) =>
       marginBottom: theme.spacing.xxs,
       marginTop: theme.spacing.md,
     },
-    input: {
+    passwordContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
       backgroundColor: theme.colors.background,
       borderRadius: theme.borderRadius.md,
       borderWidth: 1,
       borderColor: theme.colors.border,
+      height: theme.componentHeight.button,
+    },
+    passwordInput: {
+      flex: 1,
       paddingVertical: 0,
       paddingHorizontal: theme.spacing.md,
       ...theme.typography.body,
       lineHeight: undefined,
       color: theme.colors.text,
-      height: theme.componentHeight.button,
+      height: '100%',
+    },
+    eyeButton: {
+      paddingHorizontal: theme.spacing.sm,
+      justifyContent: 'center',
+      alignItems: 'center',
+      height: '100%',
     },
     inputError: {
       borderColor: theme.colors.error.main,
@@ -392,4 +382,4 @@ const createStyles = (theme: ThemeType) =>
     },
   });
 
-export default RequestQRAccessScreen;
+export default SetPasswordScreen;

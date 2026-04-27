@@ -238,6 +238,11 @@ export type RootStackParamList = {
   Login: undefined;
   ForgotPassword: undefined;
   RequestQRAccess: undefined;
+  EmailOTPVerification: {email: string};
+  PhoneInput: {email: string};
+  PhoneOTPVerification: {email: string; phone: string};
+  SetPassword: {email: string};
+  SignupSuccess: undefined;
   MainTabs: undefined;
   ChangePassword: undefined;
   ScanDetails: {scan: ScanRecord};

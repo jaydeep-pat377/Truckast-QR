@@ -44,6 +44,9 @@ async function authRequest<T>(
     if ('refreshToken' in safeBody) {
       safeBody.refreshToken = '***' + String(safeBody.refreshToken).slice(-6);
     }
+    console.log(`[Auth] ${method} ${url}`, JSON.stringify(safeBody));
+  } else {
+    console.log(`[Auth] ${method} ${url}`);
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -70,6 +73,7 @@ async function authRequest<T>(
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
+      console.log(`[Auth] FAIL ${method} ${path} ${response.status} (${elapsed}ms)`, text);
       let message = `HTTP ${response.status}`;
       try {
         const json = JSON.parse(text);
@@ -83,12 +87,14 @@ async function authRequest<T>(
     }
 
     const data = (await response.json()) as T;
-    const responsePreview = JSON.stringify(data).substring(0, 300);
+    console.log(`[Auth] OK ${method} ${path} ${response.status} (${elapsed}ms)`, JSON.stringify(data).substring(0, 500));
     return data;
   } catch (err) {
     if (err instanceof AuthError) {
+      console.log(`[Auth] ERROR ${method} ${path}:`, err.message, `status=${err.status}`);
       throw err;
     }
+    console.log(`[Auth] NETWORK ERROR ${method} ${path}:`, err instanceof Error ? err.message : err);
     throw new AuthError(
       err instanceof Error ? err.message : 'Network request failed',
       0,
