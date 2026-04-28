@@ -107,6 +107,7 @@ export interface SignupPayload {
 export interface SignupResponse {
   success: boolean;
   message: string;
+  code?: string;
 }
 
 export interface VerifyEmailOTPResponse {

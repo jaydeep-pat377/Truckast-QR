@@ -97,6 +97,19 @@ const RequestQRAccessScreen: React.FC = () => {
         lastName: lastName.trim(),
         email: email.trim(),
       });
+
+      // Handle already-verified states — skip to the correct step
+      if (result.code === 'VERIFICATION_COMPLETE') {
+        setStep(5);
+        navigation.navigate('SetPassword', {email: email.trim()});
+        return;
+      }
+      if (result.code === 'EMAIL_ALREADY_VERIFIED') {
+        setStep(3);
+        navigation.navigate('PhoneInput', {email: email.trim()});
+        return;
+      }
+
       setStep(2);
       navigation.navigate('EmailOTPVerification', {email: email.trim()});
     } catch (err: unknown) {
