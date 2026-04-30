@@ -662,98 +662,230 @@ const ScanDetailsScreen: React.FC = () => {
           )}
 
           {isTruck && (
-            <View style={styles.card}>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Truck</Text>
-                <Text style={styles.infoValue}>
-                  {apiTruck?.code || tkData.truckCode}
-                </Text>
+            <>
+              <View style={styles.card}>
+                <Text style={styles.cardSectionTitle}>TRUCK INFORMATION</Text>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Truck Code</Text>
+                  <Text style={styles.infoValue}>
+                    {apiTruck?.code || tkData.truckCode}
+                  </Text>
+                </View>
+                {apiTruck?.description && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Description</Text>
+                      <Text style={styles.infoValue}>
+                        {apiTruck.description}
+                      </Text>
+                    </View>
+                  </>
+                )}
+                {apiTruck?.owner_name && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Owner</Text>
+                      <Text style={styles.infoValue}>
+                        {apiTruck.owner_name}
+                      </Text>
+                    </View>
+                  </>
+                )}
+                {apiTruck?.ticket_status && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Status</Text>
+                      <Text style={styles.infoValue}>
+                        {apiTruck.ticket_status}
+                      </Text>
+                    </View>
+                  </>
+                )}
+                {apiTruck?.is_active_delivery !== undefined && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Active Delivery</Text>
+                      <Text style={styles.infoValue}>
+                        {apiTruck.is_active_delivery ? 'Yes' : 'No'}
+                      </Text>
+                    </View>
+                  </>
+                )}
               </View>
-              {apiTruck?.description && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Description</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTruck.description}
-                    </Text>
-                  </View>
-                </>
+
+              {(apiTruck?.current_plant_name || apiTruck?.current_plant_code) && (
+                <View style={styles.card}>
+                  <Text style={styles.cardSectionTitle}>CURRENT PLANT</Text>
+                  {apiTruck?.current_plant_name && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Plant Name</Text>
+                      <Text style={styles.infoValue}>
+                        {apiTruck.current_plant_name}
+                      </Text>
+                    </View>
+                  )}
+                  {apiTruck?.current_plant_code && (
+                    <>
+                      {apiTruck?.current_plant_name && <View style={styles.divider} />}
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Plant Code</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.current_plant_code}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </View>
               )}
-              {apiTruck?.current_driver_name && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Driver</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTruck.current_driver_name}
-                    </Text>
-                  </View>
-                </>
+
+              {(apiTruck?.current_driver_name || apiTruck?.driver_code || apiTruck?.driver_phone) && (
+                <View style={styles.card}>
+                  <Text style={styles.cardSectionTitle}>DRIVER</Text>
+                  {apiTruck?.current_driver_name && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Driver Name</Text>
+                      <Text style={styles.infoValue}>
+                        {apiTruck.current_driver_name}
+                      </Text>
+                    </View>
+                  )}
+                  {apiTruck?.driver_code && (
+                    <>
+                      {apiTruck?.current_driver_name && <View style={styles.divider} />}
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Driver Code</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.driver_code}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTruck?.driver_phone && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Driver Phone</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.driver_phone}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </View>
               )}
-              {apiTruck?.ticket_status && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Status</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTruck.ticket_status}
-                    </Text>
-                  </View>
-                </>
+
+              {(apiTruck?.ticket_code || apiTruck?.order_code || apiTruck?.customer_name || apiTruck?.delivery_address || apiTruck?.product_code || apiTruck?.plant_name) && (
+                <View style={styles.card}>
+                  <Text style={styles.cardSectionTitle}>DELIVERY DETAILS</Text>
+                  {apiTruck?.ticket_code && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Ticket</Text>
+                      <Text style={styles.infoValue}>
+                        {apiTruck.ticket_code}
+                      </Text>
+                    </View>
+                  )}
+                  {apiTruck?.order_code && (
+                    <>
+                      {apiTruck?.ticket_code && <View style={styles.divider} />}
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Order</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.order_code}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTruck?.customer_name && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Customer</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.customer_name}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTruck?.delivery_address && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Delivery Address</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.delivery_address}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTruck?.product_code && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Product</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.product_code}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTruck?.truck_qty != null && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Quantity</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.truck_qty}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTruck?.plant_name && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Plant</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.plant_name}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                  {apiTruck?.plant_phone && (
+                    <>
+                      <View style={styles.divider} />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Plant Phone</Text>
+                        <Text style={styles.infoValue}>
+                          {apiTruck.plant_phone}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </View>
               )}
-              {apiTruck?.order_code && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Current Order</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTruck.order_code}
-                    </Text>
-                  </View>
-                </>
-              )}
-              {apiTruck?.customer_name && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Customer</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTruck.customer_name}
-                    </Text>
-                  </View>
-                </>
-              )}
-              {apiTruck?.delivery_address && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Delivery</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTruck.delivery_address}
-                    </Text>
-                  </View>
-                </>
-              )}
-              {apiTruck?.plant_name && (
-                <>
-                  <View style={styles.divider} />
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Plant</Text>
-                    <Text style={styles.infoValue}>
-                      {apiTruck.plant_name}
-                    </Text>
-                  </View>
-                </>
-              )}
-              <View style={styles.divider} />
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Issued At</Text>
-                <Text style={styles.infoValue}>
-                  {formatIssuedAt(tkData.iat)}
-                </Text>
+
+              <View style={styles.card}>
+                <Text style={styles.cardSectionTitle}>SCAN INFORMATION</Text>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Scanned At</Text>
+                  <Text style={styles.infoValue}>
+                    {formatTimestamp(scan.timestamp)}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>QR Issued At</Text>
+                  <Text style={styles.infoValue}>
+                    {formatIssuedAt(tkData.iat)}
+                  </Text>
+                </View>
               </View>
-            </View>
+            </>
           )}
 
           <View style={styles.actionsContainer}>

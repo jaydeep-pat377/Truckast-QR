@@ -157,19 +157,29 @@ export interface APITicketDetails {
 }
 
 export interface APITruckDetails {
-  truck_id: number;
+  truck_id: string | number;
   code: string;
   description: string;
   latitude: string | null;
   longitude: string | null;
+  owner_name: string | null;
+  badge_card_number: string | null;
+  created_at: string | null;
+  active: boolean;
+  current_plant_code: string | null;
+  current_plant_name: string | null;
+  current_driver_id: string | number | null;
   current_driver_name: string | null;
   driver_code: string | null;
   driver_phone: string | null;
+  ticket_id: string | number | null;
   ticket_code: string | null;
-  ticket_id: number | null;
+  order_id: string | number | null;
   order_code: string | null;
-  order_id: number | null;
   delivery_address: string | null;
+  delivery_addr1: string | null;
+  delivery_addr2: string | null;
+  delivery_addr3: string | null;
   customer_name: string | null;
   plant_code: string | null;
   plant_name: string | null;
