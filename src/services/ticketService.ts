@@ -274,6 +274,8 @@ async function tryVerifyEndpoint(
       baseUrl: backendUrl,
     });
 
+    console.log('[QR] /api/qr/verify response:', JSON.stringify(response, null, 2));
+
     if (response.success && response.data) {
       const { kind, qrData, details, security_mode } = response.data;
 
@@ -285,9 +287,17 @@ async function tryVerifyEndpoint(
 
       if (security_mode?.mode === 'time_bound') {
         const scannableStatuses = security_mode.scannable_statuses || [];
-        const statusDisplay = details?.ticket?.status_display || '';
-        if (!scannableStatuses.some(s => s.toLowerCase() === statusDisplay.toLowerCase())) {
-          return { status: 'error', message: 'This ticket status does not allow viewing details.' };
+        let statusToCheck = '';
+
+        if (kind === 'ticket') {
+          statusToCheck = details?.ticket?.status_display || '';
+        } else if (kind === 'truck') {
+          statusToCheck = (details?.truck as any)?.ticket_status || '';
+        }
+
+        if (statusToCheck && !scannableStatuses.some(s => s.toLowerCase() === statusToCheck.toLowerCase())) {
+          const label = kind === 'ticket' ? 'ticket' : 'truck';
+          return { status: 'error', message: `This ${label} status (${statusToCheck}) does not allow viewing details.` };
         }
       }
 
