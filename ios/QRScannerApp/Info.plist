@@ -36,7 +36,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>QR Scanner needs camera access to scan QR codes and barcodes.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>QR Scanner needs your location to verify scan location for deliveries.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
