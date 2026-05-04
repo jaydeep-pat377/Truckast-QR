@@ -35,6 +35,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>QR Scanner needs camera access to scan QR codes and barcodes.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>QR Scanner needs photo library access to save scanned QR code images.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>QR Scanner needs your location to verify scan location for deliveries.</string>
 	<key>RCTNewArchEnabled</key>
